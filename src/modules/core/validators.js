@@ -27,7 +27,6 @@ export const createValidator = (schema, contextName) => {
       moduleFrom = 'unknown',
       moduleTo = 'unknown'
     } = options;
-    
     try {
       return schema.parse(data);
     } catch (error) {
@@ -46,7 +45,6 @@ export const createValidator = (schema, contextName) => {
         JSON.stringify(data, (key, value) => 
           ['password', 'token', 'secret'].includes(key) ? '[REDACTED]' : value
         ) : String(data);
-        
       // Format validation errors
       const formattedErrors = error.errors?.map(err => 
         `${err.path.join('.')}: ${err.message}`

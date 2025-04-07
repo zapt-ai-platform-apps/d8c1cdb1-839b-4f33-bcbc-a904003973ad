@@ -13,14 +13,10 @@ import {
   CurrencyPoundIcon,
   BookOpenIcon
 } from '@heroicons/react/24/outline';
-import { api as companiesApi } from '../api';
-import { api as activitiesApi } from '../../activities/api';
-import { api as engagementsApi } from '../../engagements/api';
-import { api as filesApi } from '../../files/api';
-import { LoadingSpinner } from '../../core';
-import { EngagementList, EngagementForm } from '../../engagements/ui';
-import { ActivityList, ActivityForm } from '../../activities/ui';
-import { FileList, FileUpload } from '../../files/ui';
+import { LoadingSpinner } from '@/modules/core';
+import { EngagementList, EngagementForm } from '@/modules/engagements';
+import { ActivityList, ActivityForm } from '@/modules/activities';
+import { FileList, FileUpload } from '@/modules/files';
 import * as Sentry from '@sentry/browser';
 
 const CompanyDetail = () => {
@@ -41,7 +37,15 @@ const CompanyDetail = () => {
     const fetchCompanyData = async () => {
       try {
         setLoading(true);
-        const data = await companiesApi.getCompanyById(id);
+        console.log(`Fetching company data for ID: ${id}`);
+        
+        const response = await fetch(`/api/companies/${id}`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch company data');
+        }
+        
+        const data = await response.json();
+        console.log("Company data received:", data);
         setCompany(data);
       } catch (error) {
         console.error("Error fetching company data:", error);
@@ -68,7 +72,15 @@ const CompanyDetail = () => {
     
     try {
       setIsDeleting(true);
-      await companiesApi.deleteCompany(id);
+      
+      const response = await fetch(`/api/companies/${id}`, {
+        method: 'DELETE'
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete company');
+      }
+      
       navigate('/companies', { replace: true });
     } catch (error) {
       console.error("Error deleting company:", error);
@@ -87,7 +99,12 @@ const CompanyDetail = () => {
   const refreshCompanyData = async () => {
     try {
       setLoading(true);
-      const data = await companiesApi.getCompanyById(id);
+      const response = await fetch(`/api/companies/${id}`);
+      if (!response.ok) {
+        throw new Error('Failed to refresh company data');
+      }
+      
+      const data = await response.json();
       setCompany(data);
     } catch (error) {
       console.error("Error refreshing company data:", error);
@@ -101,6 +118,45 @@ const CompanyDetail = () => {
     } finally {
       setLoading(false);
     }
+  };
+  
+  // Parse multi-select values
+  const parseMultiSelectData = (company) => {
+    if (!company) return { aiTools: [], signUps: [], resources: [] };
+    
+    let aiTools = [];
+    let signUps = [];
+    let resources = [];
+    
+    try {
+      if (company.aiToolsDelivered) {
+        aiTools = JSON.parse(company.aiToolsDelivered);
+      }
+      
+      if (company.additionalSignUps) {
+        signUps = JSON.parse(company.additionalSignUps);
+      }
+      
+      if (company.resourcesSent) {
+        resources = JSON.parse(company.resourcesSent);
+      }
+    } catch (error) {
+      console.error('Error parsing company data:', error);
+      Sentry.captureException(error, {
+        extra: {
+          component: 'CompanyDetail',
+          action: 'parseMultiSelectData',
+          companyId: id,
+          companyData: {
+            aiToolsDelivered: company.aiToolsDelivered,
+            additionalSignUps: company.additionalSignUps,
+            resourcesSent: company.resourcesSent
+          }
+        }
+      });
+    }
+    
+    return { aiTools, signUps, resources };
   };
   
   if (loading) {
@@ -128,7 +184,7 @@ const CompanyDetail = () => {
     return acc;
   }, {});
   
-  const { aiTools, signUps, resources } = companiesApi.parseCompanyData(company);
+  const { aiTools, signUps, resources } = parseMultiSelectData(company);
   
   return (
     <div>

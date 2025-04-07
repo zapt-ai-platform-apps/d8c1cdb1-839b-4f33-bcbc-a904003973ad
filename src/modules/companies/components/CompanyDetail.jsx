@@ -13,13 +13,10 @@ import {
   CurrencyPoundIcon,
   BookOpenIcon
 } from '@heroicons/react/24/outline';
-import LoadingSpinner from '@/modules/core/components/LoadingSpinner';
-import EngagementList from '@/modules/engagements/components/EngagementList';
-import EngagementForm from '@/modules/engagements/components/EngagementForm';
-import ActivityList from '@/modules/activities/components/ActivityList';
-import ActivityForm from '@/modules/activities/components/ActivityForm';
-import FileList from '@/modules/files/components/FileList';
-import FileUpload from '@/modules/files/components/FileUpload';
+import { LoadingSpinner } from '@/modules/core';
+import { EngagementList, EngagementForm } from '@/modules/engagements';
+import { ActivityList, ActivityForm } from '@/modules/activities';
+import { FileList, FileUpload } from '@/modules/files';
 import * as Sentry from '@sentry/browser';
 
 const CompanyDetail = () => {

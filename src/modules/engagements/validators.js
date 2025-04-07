@@ -1,34 +1,34 @@
 import { z } from 'zod';
 import { createValidator } from '../core/validators';
 
-// Define the follow-up action schema
+// Define schema for a follow-up action
 export const followUpSchema = z.object({
   id: z.number().optional(),
   engagementId: z.number().optional(),
   task: z.string().min(1, "Task description is required"),
-  dueDate: z.union([z.date(), z.string()]).optional().nullable(),
+  dueDate: z.string().optional().nullable(),
   completed: z.boolean().default(false),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional()
 });
 
-// Define the engagement schema
+// Define schema for a single engagement
 export const engagementSchema = z.object({
   id: z.number().optional(),
   companyId: z.number(),
-  dateOfContact: z.union([z.date(), z.string()]),
-  aiTrainingDelivered: z.string().optional().nullable(),
-  notes: z.string().optional().nullable(),
+  dateOfContact: z.string().or(z.instanceof(Date)),
+  aiTrainingDelivered: z.string().or(z.array(z.string())).optional(),
+  notes: z.string().optional().default(''),
   status: z.string(),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
-  followUps: z.array(followUpSchema).optional(),
+  createdAt: z.string().optional(),
+  updatedAt: z.string().optional(),
+  followUps: z.array(followUpSchema).optional().default([])
 });
 
-// Engagement list schema
+// Define schema for a list of engagements
 export const engagementListSchema = z.array(engagementSchema);
 
-// Create validators
+// Create validators with context
 export const validateEngagement = createValidator(engagementSchema, 'Engagement');
 export const validateEngagementList = createValidator(engagementListSchema, 'EngagementList');
 export const validateFollowUp = createValidator(followUpSchema, 'FollowUp');
