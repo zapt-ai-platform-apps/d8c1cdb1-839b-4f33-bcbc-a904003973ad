@@ -1,7 +1,7 @@
-import postgres from 'postgres';
-import { drizzle } from 'drizzle-orm/postgres-js';
-import * as Sentry from "@sentry/node";
+import { initializeZapt } from '@zapt/zapt-js';
+import * as Sentry from '@sentry/node';
 
+// Initialize Sentry for backend error tracking
 Sentry.init({
   dsn: process.env.VITE_PUBLIC_SENTRY_DSN,
   environment: process.env.VITE_PUBLIC_APP_ENV,
@@ -13,32 +13,36 @@ Sentry.init({
   }
 });
 
-export function getDB() {
-  try {
-    const client = postgres(process.env.COCKROACH_DB_URL);
-    return drizzle(client);
-  } catch (error) {
-    console.error("Error initializing database connection:", error);
+const { supabase } = initializeZapt(process.env.VITE_PUBLIC_APP_ID);
+
+export async function authenticateUser(req) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    const error = new Error('Missing Authorization header');
     Sentry.captureException(error, {
-      extra: {
-        message: "Failed to initialize database connection"
+      extra: { 
+        path: req.url,
+        method: req.method
       }
     });
     throw error;
   }
+
+  const token = authHeader.split(' ')[1];
+  const { data: { user }, error } = await supabase.auth.getUser(token);
+
+  if (error) {
+    Sentry.captureException(error, { 
+      extra: { 
+        path: req.url,
+        method: req.method,
+        authHeader: 'Bearer ****' // Redacted for security
+      }
+    });
+    throw new Error('Invalid token');
+  }
+
+  return user;
 }
 
-export async function handleApiError(error, res, context = {}) {
-  console.error(`API Error:`, error);
-  
-  Sentry.captureException(error, {
-    extra: {
-      ...context
-    }
-  });
-  
-  return res.status(500).json({ 
-    error: 'An error occurred on the server',
-    message: error.message
-  });
-}
+export { Sentry };
