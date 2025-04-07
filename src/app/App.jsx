@@ -1,17 +1,59 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route } from 'react-router-dom';
-import Dashboard from '@/modules/dashboard/components/Dashboard';
-import Layout from '@/modules/core/components/Layout';
-import CompanyList from '@/modules/companies/components/CompanyList';
-import CompanyDetail from '@/modules/companies/components/CompanyDetail';
-import CompanyForm from '@/modules/companies/components/CompanyForm';
-import ResourceList from '@/modules/resources/components/ResourceList';
-import ResourceForm from '@/modules/resources/components/ResourceForm';
-import ResourceDistribution from '@/modules/resources/components/ResourceDistribution';
-import NotFound from '@/modules/core/components/NotFound';
-import { ZaptBadge } from '@/modules/core/components/ZaptBadge';
+import { 
+  Dashboard,
+  initializeDashboard 
+} from '@/modules/dashboard';
+import { 
+  Layout, 
+  ZaptBadge,
+  NotFound,
+  initializeCore 
+} from '@/modules/core';
+import { 
+  CompanyList, 
+  CompanyDetail, 
+  CompanyForm,
+  initializeCompanies
+} from '@/modules/companies';
+import { 
+  ResourceList, 
+  ResourceForm, 
+  ResourceDistribution,
+  initializeResources
+} from '@/modules/resources';
+import { initializeActivities } from '@/modules/activities';
+import { initializeEngagements } from '@/modules/engagements';
+import { initializeFiles } from '@/modules/files';
+import { initializeTags } from '@/modules/tags';
 
 const App = () => {
+  // Initialize all modules when app starts
+  useEffect(() => {
+    const initializeModules = async () => {
+      try {
+        console.log('Initializing application modules...');
+        
+        await Promise.all([
+          initializeCore(),
+          initializeDashboard(),
+          initializeCompanies(),
+          initializeResources(),
+          initializeActivities(),
+          initializeEngagements(),
+          initializeFiles(),
+          initializeTags()
+        ]);
+        
+        console.log('All modules initialized successfully');
+      } catch (error) {
+        console.error('Error initializing modules:', error);
+      }
+    };
+    
+    initializeModules();
+  }, []);
+  
   return (
     <div className="min-h-screen">
       <Layout>
