@@ -1,5 +1,7 @@
 import { initializeZapt } from '@zapt/zapt-js';
 import * as Sentry from '@sentry/node';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
 
 // Initialize Sentry for backend error tracking
 Sentry.init({
@@ -43,6 +45,19 @@ export async function authenticateUser(req) {
   }
 
   return user;
+}
+
+export function getDB() {
+  const client = postgres(process.env.COCKROACH_DB_URL);
+  return drizzle(client);
+}
+
+export function handleApiError(error, res, context = {}) {
+  console.error('API Error:', error.message);
+  Sentry.captureException(error, { 
+    extra: context
+  });
+  return res.status(500).json({ error: 'Internal server error' });
 }
 
 export { Sentry };

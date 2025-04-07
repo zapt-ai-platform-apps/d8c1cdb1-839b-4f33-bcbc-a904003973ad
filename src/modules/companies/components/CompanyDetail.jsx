@@ -9,7 +9,9 @@ import {
   ChatBubbleLeftRightIcon,
   PlusIcon,
   TagIcon,
-  DocumentIcon
+  DocumentIcon,
+  CurrencyPoundIcon,
+  BookOpenIcon
 } from '@heroicons/react/24/outline';
 import LoadingSpinner from '@/modules/core/components/LoadingSpinner';
 import EngagementList from '@/modules/engagements/components/EngagementList';
@@ -121,6 +123,45 @@ const CompanyDetail = () => {
     }
   };
   
+  // Parse multi-select values
+  const parseMultiSelectData = (company) => {
+    if (!company) return { aiTools: [], signUps: [], resources: [] };
+    
+    let aiTools = [];
+    let signUps = [];
+    let resources = [];
+    
+    try {
+      if (company.aiToolsDelivered) {
+        aiTools = JSON.parse(company.aiToolsDelivered);
+      }
+      
+      if (company.additionalSignUps) {
+        signUps = JSON.parse(company.additionalSignUps);
+      }
+      
+      if (company.resourcesSent) {
+        resources = JSON.parse(company.resourcesSent);
+      }
+    } catch (error) {
+      console.error('Error parsing company data:', error);
+      Sentry.captureException(error, {
+        extra: {
+          component: 'CompanyDetail',
+          action: 'parseMultiSelectData',
+          companyId: id,
+          companyData: {
+            aiToolsDelivered: company.aiToolsDelivered,
+            additionalSignUps: company.additionalSignUps,
+            resourcesSent: company.resourcesSent
+          }
+        }
+      });
+    }
+    
+    return { aiTools, signUps, resources };
+  };
+  
   if (loading) {
     return <LoadingSpinner size="large" message="Loading company details..." />;
   }
@@ -146,6 +187,8 @@ const CompanyDetail = () => {
     return acc;
   }, {});
   
+  const { aiTools, signUps, resources } = parseMultiSelectData(company);
+  
   return (
     <div>
       {/* Company header */}
@@ -154,13 +197,13 @@ const CompanyDetail = () => {
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{company.name}</h1>
             <p className="mt-1 text-sm text-gray-500">
-              {company.industry} {company.location ? `• ${company.location}` : ''}
+              {company.sector || company.industry} {company.location ? `• ${company.location}` : ''}
             </p>
           </div>
           <div className="flex space-x-3">
             <Link
               to={`/companies/${id}/edit`}
-              className="btn-outline flex items-center"
+              className="btn-outline flex items-center cursor-pointer"
             >
               <PencilIcon className="h-4 w-4 mr-2" />
               Edit
@@ -168,7 +211,7 @@ const CompanyDetail = () => {
             <button 
               onClick={handleDelete}
               disabled={isDeleting}
-              className="btn-danger flex items-center"
+              className="btn-danger flex items-center cursor-pointer"
             >
               <TrashIcon className="h-4 w-4 mr-2" />
               {isDeleting ? 'Deleting...' : 'Delete'}
@@ -241,6 +284,91 @@ const CompanyDetail = () => {
         </div>
       </div>
       
+      {/* GMFEIP Engagement Info */}
+      <div className="bg-white shadow rounded-lg mb-6">
+        <div className="px-6 py-5">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">GMFEIP Engagement Information</h2>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div>
+              <h3 className="text-md font-medium text-gray-700 mb-2">AI Tools Delivered</h3>
+              {aiTools && aiTools.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {aiTools.map((tool, index) => (
+                    <span key={index} className="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium bg-purple-100 text-purple-800">
+                      {tool}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No AI tools recorded</p>
+              )}
+            </div>
+            
+            <div>
+              <h3 className="text-md font-medium text-gray-700 mb-2">Additional Sign-Ups</h3>
+              {signUps && signUps.length > 0 ? (
+                <div className="flex flex-wrap gap-2">
+                  {signUps.map((signUp, index) => (
+                    <span key={index} className="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium bg-green-100 text-green-800">
+                      {signUp}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">No additional sign-ups recorded</p>
+              )}
+            </div>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-6">
+            <div>
+              <div className="flex items-center">
+                <CurrencyPoundIcon className="h-5 w-5 text-gray-500 mr-2" />
+                <h3 className="text-md font-medium text-gray-700">Value to College</h3>
+              </div>
+              {company.valueToCollege ? (
+                <p className="mt-2 text-2xl font-bold text-green-600">
+                  £{parseFloat(company.valueToCollege).toLocaleString('en-GB', {
+                    minimumFractionDigits: 2,
+                    maximumFractionDigits: 2
+                  })}
+                </p>
+              ) : (
+                <p className="mt-2 text-sm text-gray-500">No value recorded</p>
+              )}
+            </div>
+            
+            <div>
+              <div className="flex items-center">
+                <BookOpenIcon className="h-5 w-5 text-gray-500 mr-2" />
+                <h3 className="text-md font-medium text-gray-700">Resources Sent</h3>
+              </div>
+              {resources && resources.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {resources.map((resource, index) => (
+                    <span key={index} className="inline-flex items-center px-2.5 py-1 rounded-md text-sm font-medium bg-blue-100 text-blue-800">
+                      {resource.label}
+                    </span>
+                  ))}
+                </div>
+              ) : (
+                <p className="mt-2 text-sm text-gray-500">No resources recorded</p>
+              )}
+            </div>
+          </div>
+          
+          {company.engagementNotes && (
+            <div className="mt-6">
+              <h3 className="text-md font-medium text-gray-700 mb-2">Engagement Notes</h3>
+              <div className="bg-gray-50 p-4 rounded-md">
+                <p className="text-sm text-gray-700 whitespace-pre-line">{company.engagementNotes}</p>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+      
       {/* Tabs navigation */}
       <div className="mb-6">
         <div className="border-b border-gray-200">
@@ -248,7 +376,7 @@ const CompanyDetail = () => {
             <button
               onClick={() => setActiveTab('overview')}
               className={`
-                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer
                 ${activeTab === 'overview'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
@@ -259,7 +387,7 @@ const CompanyDetail = () => {
             <button
               onClick={() => setActiveTab('engagements')}
               className={`
-                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer
                 ${activeTab === 'engagements'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
@@ -270,7 +398,7 @@ const CompanyDetail = () => {
             <button
               onClick={() => setActiveTab('activities')}
               className={`
-                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer
                 ${activeTab === 'activities'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
@@ -281,7 +409,7 @@ const CompanyDetail = () => {
             <button
               onClick={() => setActiveTab('files')}
               className={`
-                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm
+                whitespace-nowrap py-4 px-1 border-b-2 font-medium text-sm cursor-pointer
                 ${activeTab === 'files'
                   ? 'border-blue-500 text-blue-600'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}
@@ -338,7 +466,7 @@ const CompanyDetail = () => {
                 {company.engagements.length > 0 && (
                   <button 
                     onClick={() => setActiveTab('engagements')}
-                    className="mt-3 text-sm text-blue-600 hover:text-blue-800"
+                    className="mt-3 text-sm text-blue-600 hover:text-blue-800 cursor-pointer"
                   >
                     View all engagements
                   </button>
@@ -383,7 +511,7 @@ const CompanyDetail = () => {
                 {company.activities.length > 0 && (
                   <button 
                     onClick={() => setActiveTab('activities')}
-                    className="mt-3 text-sm text-blue-600 hover:text-blue-800"
+                    className="mt-3 text-sm text-blue-600 hover:text-blue-800 cursor-pointer"
                   >
                     View all activities
                   </button>
@@ -400,7 +528,7 @@ const CompanyDetail = () => {
               <h2 className="text-lg font-medium text-gray-900">Engagement History</h2>
               <button
                 onClick={() => setShowEngagementForm(true)}
-                className="btn-primary flex items-center"
+                className="btn-primary flex items-center cursor-pointer"
               >
                 <PlusIcon className="h-4 w-4 mr-2" />
                 Add Engagement
@@ -432,7 +560,7 @@ const CompanyDetail = () => {
               <h2 className="text-lg font-medium text-gray-900">Learning Activities</h2>
               <button
                 onClick={() => setShowActivityForm(true)}
-                className="btn-primary flex items-center"
+                className="btn-primary flex items-center cursor-pointer"
               >
                 <PlusIcon className="h-4 w-4 mr-2" />
                 Add Activity
@@ -464,7 +592,7 @@ const CompanyDetail = () => {
               <h2 className="text-lg font-medium text-gray-900">Files & Links</h2>
               <button
                 onClick={() => setShowFileUpload(true)}
-                className="btn-primary flex items-center"
+                className="btn-primary flex items-center cursor-pointer"
               >
                 <PlusIcon className="h-4 w-4 mr-2" />
                 Add File/Link

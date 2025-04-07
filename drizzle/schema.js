@@ -11,6 +11,12 @@ export const companies = pgTable('companies', {
   phone: text('phone'),
   website: text('website'),
   socialMedia: text('social_media'),
+  sector: text('sector'),
+  aiToolsDelivered: text('ai_tools_delivered'),
+  additionalSignUps: text('additional_sign_ups'),
+  valueToCollege: decimal('value_to_college', { precision: 10, scale: 2 }),
+  engagementNotes: text('engagement_notes'),
+  resourcesSent: text('resources_sent'),
   createdAt: timestamp('created_at').defaultNow(),
   updatedAt: timestamp('updated_at').defaultNow(),
 });

@@ -83,6 +83,12 @@ export default async function handler(req, res) {
           phone: company.phone,
           website: company.website,
           socialMedia: company.socialMedia,
+          sector: company.sector,
+          aiToolsDelivered: company.aiToolsDelivered,
+          additionalSignUps: company.additionalSignUps,
+          valueToCollege: company.valueToCollege,
+          engagementNotes: company.engagementNotes,
+          resourcesSent: company.resourcesSent,
           updatedAt: new Date(),
         })
         .where(eq(companies.id, companyId))

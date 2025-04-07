@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   try {
     // GET - retrieve companies, with optional filters
     if (req.method === 'GET') {
-      const { search, tagIds, industryFilter, locationFilter } = req.query;
+      const { search, tagIds, industryFilter, sectorFilter, locationFilter } = req.query;
       
       let query = db.select().from(companies);
       
@@ -42,6 +42,11 @@ export default async function handler(req, res) {
         query = query.where(eq(companies.industry, industryFilter));
       }
       
+      // Apply sector filter
+      if (sectorFilter) {
+        query = query.where(eq(companies.sector, sectorFilter));
+      }
+      
       // Apply location filter
       if (locationFilter) {
         query = query.where(eq(companies.location, locationFilter));
@@ -65,6 +70,12 @@ export default async function handler(req, res) {
         phone: company.phone,
         website: company.website,
         socialMedia: company.socialMedia,
+        sector: company.sector,
+        aiToolsDelivered: company.aiToolsDelivered,
+        additionalSignUps: company.additionalSignUps,
+        valueToCollege: company.valueToCollege,
+        engagementNotes: company.engagementNotes,
+        resourcesSent: company.resourcesSent,
         updatedAt: new Date(),
       }).returning();
       

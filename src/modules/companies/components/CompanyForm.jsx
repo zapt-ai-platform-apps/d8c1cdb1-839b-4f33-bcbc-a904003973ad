@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
+import Select from 'react-select';
 import LoadingSpinner from '@/modules/core/components/LoadingSpinner';
 import * as Sentry from '@sentry/browser';
 
@@ -13,6 +14,29 @@ const CompanyForm = () => {
   const [error, setError] = useState(null);
   const [tags, setTags] = useState([]);
   
+  // Constants for dropdown options
+  const sectorOptions = [
+    { value: 'Construction', label: 'Construction' },
+    { value: 'Health', label: 'Health' },
+    { value: 'Digital', label: 'Digital' },
+    { value: 'Education', label: 'Education' },
+    { value: 'Other', label: 'Other' }
+  ];
+  
+  const aiToolsOptions = [
+    { value: 'Gamma', label: 'Gamma' },
+    { value: 'ChatGPT', label: 'ChatGPT' },
+    { value: 'Synthesia', label: 'Synthesia' },
+    { value: 'Newarc', label: 'Newarc' },
+    { value: 'Custom GPTs', label: 'Custom GPTs' }
+  ];
+  
+  const additionalSignUpOptions = [
+    { value: 'Courses', label: 'Courses' },
+    { value: 'Apprenticeships', label: 'Apprenticeships' },
+    { value: 'T-Levels', label: 'T-Levels' }
+  ];
+  
   // Form state
   const [formData, setFormData] = useState({
     name: '',
@@ -24,6 +48,12 @@ const CompanyForm = () => {
     phone: '',
     website: '',
     socialMedia: '',
+    sector: '',
+    aiToolsDelivered: '',
+    additionalSignUps: '',
+    valueToCollege: '',
+    engagementNotes: '',
+    resourcesSent: '',
     selectedTags: []
   });
   
@@ -43,6 +73,11 @@ const CompanyForm = () => {
           const data = await response.json();
           console.log("Company data received:", data);
           
+          // Parse stored multi-select values if they exist
+          const parsedAiTools = data.aiToolsDelivered ? JSON.parse(data.aiToolsDelivered) : [];
+          const parsedSignUps = data.additionalSignUps ? JSON.parse(data.additionalSignUps) : [];
+          const parsedResources = data.resourcesSent ? JSON.parse(data.resourcesSent) : [];
+          
           setFormData({
             name: data.name || '',
             industry: data.industry || '',
@@ -53,6 +88,12 @@ const CompanyForm = () => {
             phone: data.phone || '',
             website: data.website || '',
             socialMedia: data.socialMedia || '',
+            sector: data.sector || '',
+            aiToolsDelivered: parsedAiTools,
+            additionalSignUps: parsedSignUps,
+            valueToCollege: data.valueToCollege || '',
+            engagementNotes: data.engagementNotes || '',
+            resourcesSent: parsedResources,
             selectedTags: data.tags.map(tag => tag.id) || []
           });
         } catch (error) {
@@ -104,6 +145,13 @@ const CompanyForm = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
   
+  const handleSelectChange = (selectedOptions, action) => {
+    setFormData(prev => ({
+      ...prev,
+      [action.name]: selectedOptions || []
+    }));
+  };
+  
   const handleTagToggle = (tagId) => {
     setFormData(prev => {
       const selectedTags = [...prev.selectedTags];
@@ -128,6 +176,11 @@ const CompanyForm = () => {
     try {
       setSubmitting(true);
       
+      // Convert multi-select values to JSON strings for storage
+      const aiToolsJSON = JSON.stringify(formData.aiToolsDelivered.map(tool => tool.value));
+      const signUpsJSON = JSON.stringify(formData.additionalSignUps.map(signup => signup.value));
+      const resourcesJSON = JSON.stringify(formData.resourcesSent);
+      
       const company = {
         name: formData.name,
         industry: formData.industry,
@@ -137,7 +190,13 @@ const CompanyForm = () => {
         email: formData.email,
         phone: formData.phone,
         website: formData.website,
-        socialMedia: formData.socialMedia
+        socialMedia: formData.socialMedia,
+        sector: formData.sector,
+        aiToolsDelivered: aiToolsJSON,
+        additionalSignUps: signUpsJSON,
+        valueToCollege: formData.valueToCollege ? parseFloat(formData.valueToCollege) : null,
+        engagementNotes: formData.engagementNotes,
+        resourcesSent: resourcesJSON
       };
       
       const method = isEditing ? 'PUT' : 'POST';
@@ -183,6 +242,12 @@ const CompanyForm = () => {
     return acc;
   }, {});
   
+  // Calculate sector select value
+  const getSectorValue = () => {
+    if (!formData.sector) return null;
+    return sectorOptions.find(option => option.value === formData.sector) || null;
+  };
+  
   if (loading) {
     return <LoadingSpinner size="large" message={`Loading company details...`} />;
   }
@@ -223,14 +288,17 @@ const CompanyForm = () => {
           </div>
           
           <div className="sm:col-span-3">
-            <label htmlFor="industry" className="form-label">Industry / Sector</label>
-            <input
-              type="text"
-              id="industry"
-              name="industry"
-              value={formData.industry}
-              onChange={handleChange}
-              className="form-input box-border"
+            <label htmlFor="sector" className="form-label">Sector</label>
+            <Select
+              id="sector"
+              name="sector"
+              options={sectorOptions}
+              value={getSectorValue()}
+              onChange={(selected) => setFormData(prev => ({ ...prev, sector: selected ? selected.value : '' }))}
+              isClearable
+              placeholder="Select sector..."
+              className="basic-select"
+              classNamePrefix="select"
             />
           </div>
           
@@ -251,7 +319,7 @@ const CompanyForm = () => {
           </div>
           
           <div className="sm:col-span-3">
-            <label htmlFor="contactName" className="form-label">Primary Contact Name</label>
+            <label htmlFor="contactName" className="form-label">Contact Name</label>
             <input
               type="text"
               id="contactName"
@@ -275,7 +343,7 @@ const CompanyForm = () => {
           </div>
           
           <div className="sm:col-span-3">
-            <label htmlFor="email" className="form-label">Email</label>
+            <label htmlFor="email" className="form-label">Contact Email</label>
             <input
               type="email"
               id="email"
@@ -287,7 +355,7 @@ const CompanyForm = () => {
           </div>
           
           <div className="sm:col-span-3">
-            <label htmlFor="phone" className="form-label">Phone</label>
+            <label htmlFor="phone" className="form-label">Contact Phone</label>
             <input
               type="tel"
               id="phone"
@@ -298,30 +366,80 @@ const CompanyForm = () => {
             />
           </div>
           
-          <div className="sm:col-span-3">
-            <label htmlFor="website" className="form-label">Website</label>
-            <input
-              type="url"
-              id="website"
-              name="website"
-              value={formData.website}
-              onChange={handleChange}
-              className="form-input box-border"
-              placeholder="https://..."
+          <div className="sm:col-span-6 border-t border-gray-200 pt-5">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Engagement Information</h3>
+          </div>
+          
+          <div className="sm:col-span-6">
+            <label htmlFor="aiToolsDelivered" className="form-label">AI Tools Delivered</label>
+            <Select
+              id="aiToolsDelivered"
+              name="aiToolsDelivered"
+              options={aiToolsOptions}
+              value={formData.aiToolsDelivered}
+              onChange={handleSelectChange}
+              isMulti
+              placeholder="Select AI tools..."
+              className="basic-multi-select"
+              classNamePrefix="select"
+            />
+          </div>
+          
+          <div className="sm:col-span-6">
+            <label htmlFor="additionalSignUps" className="form-label">Additional Sign-Ups</label>
+            <Select
+              id="additionalSignUps"
+              name="additionalSignUps"
+              options={additionalSignUpOptions}
+              value={formData.additionalSignUps}
+              onChange={handleSelectChange}
+              isMulti
+              placeholder="Select additional sign-ups..."
+              className="basic-multi-select"
+              classNamePrefix="select"
             />
           </div>
           
           <div className="sm:col-span-3">
-            <label htmlFor="socialMedia" className="form-label">Social Media</label>
+            <label htmlFor="valueToCollege" className="form-label">Value to College (£)</label>
             <input
-              type="text"
-              id="socialMedia"
-              name="socialMedia"
-              value={formData.socialMedia}
+              type="number"
+              id="valueToCollege"
+              name="valueToCollege"
+              value={formData.valueToCollege}
               onChange={handleChange}
+              step="0.01"
+              min="0"
               className="form-input box-border"
-              placeholder="LinkedIn, Twitter, etc."
             />
+          </div>
+          
+          <div className="sm:col-span-6">
+            <label htmlFor="engagementNotes" className="form-label">Engagement Notes</label>
+            <textarea
+              id="engagementNotes"
+              name="engagementNotes"
+              rows="4"
+              value={formData.engagementNotes}
+              onChange={handleChange}
+              className="form-textarea box-border"
+            ></textarea>
+          </div>
+          
+          <div className="sm:col-span-6">
+            <label htmlFor="resourcesSent" className="form-label">Resources Sent</label>
+            <Select
+              id="resourcesSent"
+              name="resourcesSent"
+              options={[]}
+              value={formData.resourcesSent}
+              onChange={handleSelectChange}
+              isMulti
+              placeholder="Select resources sent..."
+              className="basic-multi-select"
+              classNamePrefix="select"
+            />
+            <p className="mt-1 text-sm text-gray-500">Note: Resource management will be added in a future update.</p>
           </div>
           
           <div className="sm:col-span-6 border-t border-gray-200 pt-5">
@@ -349,6 +467,49 @@ const CompanyForm = () => {
               </div>
             ))}
           </div>
+          
+          <div className="sm:col-span-6 border-t border-gray-200 pt-5">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Additional Information (Optional)</h3>
+          </div>
+          
+          <div className="sm:col-span-3">
+            <label htmlFor="industry" className="form-label">Industry</label>
+            <input
+              type="text"
+              id="industry"
+              name="industry"
+              value={formData.industry}
+              onChange={handleChange}
+              className="form-input box-border"
+            />
+            <p className="mt-1 text-xs text-gray-500">For backward compatibility (use Sector field instead)</p>
+          </div>
+          
+          <div className="sm:col-span-3">
+            <label htmlFor="website" className="form-label">Website</label>
+            <input
+              type="url"
+              id="website"
+              name="website"
+              value={formData.website}
+              onChange={handleChange}
+              className="form-input box-border"
+              placeholder="https://..."
+            />
+          </div>
+          
+          <div className="sm:col-span-3">
+            <label htmlFor="socialMedia" className="form-label">Social Media</label>
+            <input
+              type="text"
+              id="socialMedia"
+              name="socialMedia"
+              value={formData.socialMedia}
+              onChange={handleChange}
+              className="form-input box-border"
+              placeholder="LinkedIn, Twitter, etc."
+            />
+          </div>
         </div>
         
         <div className="px-4 py-3 bg-gray-50 text-right sm:px-6 flex justify-end space-x-3">
@@ -361,7 +522,7 @@ const CompanyForm = () => {
           <button
             type="submit"
             disabled={submitting}
-            className="btn-primary"
+            className="btn-primary cursor-pointer"
           >
             {submitting ? 'Saving...' : 'Save'}
           </button>
