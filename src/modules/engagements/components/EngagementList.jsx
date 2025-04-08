@@ -1,21 +1,12 @@
 import React, { useState } from 'react';
 import { TrashIcon, PencilIcon } from '@heroicons/react/24/outline';
 import EngagementForm from './EngagementForm';
+import { api as engagementsApi } from '../api';
 import * as Sentry from '@sentry/browser';
 
 const EngagementList = ({ engagements, onRefresh }) => {
   const [editingEngagement, setEditingEngagement] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
-  
-  // Get AI tools from JSON string
-  const getAITools = (aiToolsStr) => {
-    if (!aiToolsStr) return [];
-    try {
-      return JSON.parse(aiToolsStr);
-    } catch (e) {
-      return aiToolsStr.split(',').map(tool => tool.trim());
-    }
-  };
   
   const handleDelete = async (engagementId) => {
     if (!window.confirm('Are you sure you want to delete this engagement?')) {
@@ -25,13 +16,7 @@ const EngagementList = ({ engagements, onRefresh }) => {
     try {
       setIsDeleting(true);
       
-      const response = await fetch(`/api/engagements/${engagementId}`, {
-        method: 'DELETE'
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to delete engagement');
-      }
+      await engagementsApi.deleteEngagement(engagementId);
       
       if (onRefresh) onRefresh();
     } catch (error) {
@@ -82,7 +67,7 @@ const EngagementList = ({ engagements, onRefresh }) => {
     );
   }
   
-  if (engagements.length === 0) {
+  if (!engagements || engagements.length === 0) {
     return (
       <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
         <p className="text-gray-500">No engagements recorded yet</p>
@@ -99,7 +84,7 @@ const EngagementList = ({ engagements, onRefresh }) => {
     <div className="overflow-hidden bg-white border border-gray-200 rounded-lg">
       <ul className="divide-y divide-gray-200">
         {sortedEngagements.map(engagement => {
-          const aiTools = getAITools(engagement.aiTrainingDelivered);
+          const aiTools = engagementsApi.getAITools(engagement.aiTrainingDelivered);
           
           return (
             <li key={engagement.id} className="p-4">
@@ -135,21 +120,19 @@ const EngagementList = ({ engagements, onRefresh }) => {
                       <p className="text-sm text-gray-700 whitespace-pre-line">{engagement.notes}</p>
                     </div>
                   )}
-                  
-                  {/* Follow-up actions will be visible here when we fetch them */}
                 </div>
                 
                 <div className="ml-4 flex-shrink-0 flex">
                   <button
                     onClick={() => handleEdit(engagement)}
-                    className="mr-2 text-gray-400 hover:text-gray-500"
+                    className="mr-2 text-gray-400 hover:text-gray-500 cursor-pointer"
                   >
                     <PencilIcon className="h-5 w-5" />
                   </button>
                   <button
                     onClick={() => handleDelete(engagement.id)}
                     disabled={isDeleting}
-                    className="text-gray-400 hover:text-red-600"
+                    className="text-gray-400 hover:text-red-600 cursor-pointer"
                   >
                     <TrashIcon className="h-5 w-5" />
                   </button>

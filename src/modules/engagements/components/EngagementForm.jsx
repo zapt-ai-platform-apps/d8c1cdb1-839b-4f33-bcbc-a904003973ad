@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+import { TrashIcon } from '@heroicons/react/24/outline';
+import { api as engagementsApi } from '../api';
 import * as Sentry from '@sentry/browser';
 
 const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) => {
@@ -20,14 +22,8 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
   // Parse AI training tools on component mount
   useEffect(() => {
     if (engagement?.aiTrainingDelivered) {
-      try {
-        const tools = JSON.parse(engagement.aiTrainingDelivered);
-        setFormData(prev => ({ ...prev, aiTrainingDelivered: tools }));
-      } catch (e) {
-        // If it's not valid JSON, try splitting by commas
-        const tools = engagement.aiTrainingDelivered.split(',').map(tool => tool.trim());
-        setFormData(prev => ({ ...prev, aiTrainingDelivered: tools }));
-      }
+      const tools = engagementsApi.getAITools(engagement.aiTrainingDelivered);
+      setFormData(prev => ({ ...prev, aiTrainingDelivered: tools }));
     }
   }, [engagement]);
   
@@ -36,12 +32,7 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
     if (isEditing) {
       const fetchFollowUps = async () => {
         try {
-          const response = await fetch(`/api/engagements/${engagement.id}`);
-          if (!response.ok) {
-            throw new Error('Failed to fetch engagement details');
-          }
-          
-          const data = await response.json();
+          const data = await engagementsApi.getEngagementById(engagement.id);
           
           if (data.followUps) {
             setFormData(prev => ({
@@ -149,36 +140,27 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
       
       const engagementData = {
         companyId,
-        dateOfContact: formData.dateOfContact.toISOString().split('T')[0],
-        aiTrainingDelivered: JSON.stringify(formData.aiTrainingDelivered),
+        dateOfContact: formData.dateOfContact,
+        aiTrainingDelivered: formData.aiTrainingDelivered,
         notes: formData.notes,
         status: formData.status
       };
       
-      const followUps = formData.followUps.map(followUp => ({
-        ...followUp,
-        dueDate: followUp.dueDate ? followUp.dueDate.toISOString().split('T')[0] : null
-      }));
-      
-      const method = isEditing ? 'PUT' : 'POST';
-      const url = isEditing ? `/api/engagements/${engagement.id}` : '/api/engagements';
-      
-      const response = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          engagement: engagementData,
-          followUps
-        })
-      });
-      
-      if (!response.ok) {
-        throw new Error(`Failed to ${isEditing ? 'update' : 'add'} engagement`);
+      let result;
+      if (isEditing) {
+        result = await engagementsApi.updateEngagement(
+          engagement.id, 
+          engagementData, 
+          formData.followUps
+        );
+      } else {
+        result = await engagementsApi.createEngagement(
+          engagementData, 
+          formData.followUps
+        );
       }
       
-      if (onSuccess) onSuccess();
+      if (onSuccess) onSuccess(result);
     } catch (error) {
       console.error(`Error ${isEditing ? 'updating' : 'adding'} engagement:`, error);
       setError(error.message);
@@ -316,7 +298,7 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
                       <button
                         type="button"
                         onClick={() => removeFollowUp(index)}
-                        className="text-red-500 hover:text-red-700"
+                        className="text-red-500 hover:text-red-700 cursor-pointer"
                       >
                         <TrashIcon className="h-5 w-5" />
                       </button>
@@ -339,7 +321,7 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
           <button
             type="submit"
             disabled={submitting}
-            className="btn-primary"
+            className="btn-primary cursor-pointer"
           >
             {submitting ? 'Saving...' : 'Save'}
           </button>
