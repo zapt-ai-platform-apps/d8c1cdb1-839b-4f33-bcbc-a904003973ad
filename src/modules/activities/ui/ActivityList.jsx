@@ -52,7 +52,7 @@ const ActivityList = ({ activities, onRefresh }) => {
     );
   }
   
-  if (activities.length === 0) {
+  if (!activities || activities.length === 0) {
     return (
       <div className="text-center py-6 bg-gray-50 rounded-lg border border-gray-200">
         <p className="text-gray-500">No learning activities recorded yet</p>

@@ -2,8 +2,8 @@ import { api } from './api';
 import { events } from './events';
 
 // Re-export UI components
-export { default as EngagementForm } from './components/EngagementForm';
-export { default as EngagementList } from './components/EngagementList';
+export { default as EngagementForm } from './ui/EngagementForm';
+export { default as EngagementList } from './ui/EngagementList';
 
 // Initialize the engagements module
 export const initializeEngagements = () => {
