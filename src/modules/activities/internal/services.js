@@ -1,184 +1,133 @@
-import { eventBus } from '../../core/events';
-import { events } from '../events';
-import { validateActivity, validateActivityList } from '../validators';
 import * as Sentry from '@sentry/browser';
 
-/**
- * Fetch activities for a company
- */
-export const fetchActivities = async (companyId) => {
+export async function fetchActivitiesForCompany(companyId) {
   try {
-    console.log(`Fetching activities for company ${companyId}`);
-    
-    const response = await fetch(`/api/activities?companyId=${companyId}`);
-    
-    if (!response.ok) {
-      throw new Error('Failed to fetch activities');
+    if (!companyId) {
+      throw new Error('Company ID is required to fetch activities');
     }
     
-    const data = await response.json();
-    
-    // Validate response data
-    const validatedData = validateActivityList(data, {
-      actionName: 'fetchActivities',
-      location: 'activities/internal/services.js',
-      direction: 'incoming',
-      moduleFrom: 'api',
-      moduleTo: 'activities'
+    const response = await fetch(`/api/activities?companyId=${companyId}`, {
+      method: 'GET',
     });
     
-    // Publish event for successful fetch
-    eventBus.publish(events.ACTIVITY_LIST_UPDATED, { activities: validatedData, companyId });
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to fetch activities');
+    }
     
-    return validatedData;
+    return await response.json();
   } catch (error) {
-    console.error("Error fetching activities:", error);
+    console.error('Error fetching activities:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'fetchActivities',
-        companyId
+      extra: { 
+        function: 'fetchActivitiesForCompany',
+        companyId,
       }
     });
     throw error;
   }
-};
+}
 
-/**
- * Create a new activity
- */
-export const createActivity = async (activityData) => {
+export async function createActivity(activityData) {
   try {
-    // Validate data before sending
-    validateActivity(activityData, {
-      actionName: 'createActivity',
-      location: 'activities/internal/services.js',
-      direction: 'outgoing',
-      moduleFrom: 'activities',
-      moduleTo: 'api'
-    });
+    if (!activityData || !activityData.companyId) {
+      throw new Error('Company ID is required to create an activity');
+    }
+
+    // Ensure companyId is a number
+    if (typeof activityData.companyId === 'string') {
+      activityData.companyId = Number(activityData.companyId);
+      
+      if (isNaN(activityData.companyId)) {
+        throw new Error('Invalid company ID format');
+      }
+    }
+    
+    console.log(`Creating activity for company ID: ${activityData.companyId}`);
     
     const response = await fetch('/api/activities', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        activity: activityData
-      })
+      body: JSON.stringify({ activity: activityData }),
     });
     
     if (!response.ok) {
-      throw new Error('Failed to create activity');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to create activity');
     }
     
-    const data = await response.json();
-    
-    // Validate response data
-    const validatedData = validateActivity(data, {
-      actionName: 'createActivityResponse',
-      location: 'activities/internal/services.js',
-      direction: 'incoming',
-      moduleFrom: 'api',
-      moduleTo: 'activities'
-    });
-    
-    // Publish event for new activity
-    eventBus.publish(events.ACTIVITY_CREATED, { activity: validatedData });
-    
-    return validatedData;
+    return await response.json();
   } catch (error) {
-    console.error("Error creating activity:", error);
+    console.error('Error creating activity:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'createActivity',
+      extra: { 
+        function: 'createActivity',
         activityData
       }
     });
     throw error;
   }
-};
+}
 
-/**
- * Update an existing activity
- */
-export const updateActivity = async (activityId, activityData) => {
+export async function updateActivity(activityId, activityData) {
   try {
-    // Validate data before sending
-    validateActivity(activityData, {
-      actionName: 'updateActivity',
-      location: 'activities/internal/services.js',
-      direction: 'outgoing',
-      moduleFrom: 'activities',
-      moduleTo: 'api'
-    });
+    if (!activityId) {
+      throw new Error('Activity ID is required to update an activity');
+    }
     
     const response = await fetch(`/api/activities/${activityId}`, {
       method: 'PUT',
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        activity: activityData
-      })
+      body: JSON.stringify({ activity: activityData }),
     });
     
     if (!response.ok) {
-      throw new Error('Failed to update activity');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to update activity');
     }
     
-    const data = await response.json();
-    
-    // Validate response data
-    const validatedData = validateActivity(data, {
-      actionName: 'updateActivityResponse',
-      location: 'activities/internal/services.js',
-      direction: 'incoming',
-      moduleFrom: 'api',
-      moduleTo: 'activities'
-    });
-    
-    // Publish event for updated activity
-    eventBus.publish(events.ACTIVITY_UPDATED, { activity: validatedData });
-    
-    return validatedData;
+    return await response.json();
   } catch (error) {
-    console.error("Error updating activity:", error);
+    console.error('Error updating activity:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'updateActivity',
+      extra: { 
+        function: 'updateActivity',
         activityId,
         activityData
       }
     });
     throw error;
   }
-};
+}
 
-/**
- * Delete an activity
- */
-export const deleteActivity = async (activityId) => {
+export async function deleteActivity(activityId) {
   try {
+    if (!activityId) {
+      throw new Error('Activity ID is required to delete an activity');
+    }
+    
     const response = await fetch(`/api/activities/${activityId}`, {
-      method: 'DELETE'
+      method: 'DELETE',
     });
     
     if (!response.ok) {
-      throw new Error('Failed to delete activity');
+      const errorData = await response.json();
+      throw new Error(errorData.error || 'Failed to delete activity');
     }
-    
-    // Publish event for deleted activity
-    eventBus.publish(events.ACTIVITY_DELETED, { activityId });
     
     return true;
   } catch (error) {
-    console.error("Error deleting activity:", error);
+    console.error('Error deleting activity:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'deleteActivity',
+      extra: { 
+        function: 'deleteActivity',
         activityId
       }
     });
     throw error;
   }
-};
+}
