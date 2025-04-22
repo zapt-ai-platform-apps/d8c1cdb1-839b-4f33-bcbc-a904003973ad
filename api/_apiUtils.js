@@ -2,6 +2,7 @@ import { initializeZapt } from '@zapt/zapt-js';
 import * as Sentry from '@sentry/node';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
+import * as schema from '../drizzle/schema.js';
 
 // Initialize Sentry for backend error tracking
 Sentry.init({
@@ -48,8 +49,31 @@ export async function authenticateUser(req) {
 }
 
 export function getDB() {
-  const client = postgres(process.env.COCKROACH_DB_URL);
-  return drizzle(client);
+  try {
+    const client = postgres(process.env.COCKROACH_DB_URL);
+    // Import the drizzle schema and pass it to the drizzle instance
+    const db = drizzle(client, { schema });
+    
+    // Validate that the db.query object has the expected properties
+    if (!db.query || !db.query.companies) {
+      console.error('Error in DB setup: query builder for companies table is missing');
+      Sentry.captureMessage('Drizzle query builder setup failed', {
+        level: 'error',
+        extra: {
+          schemaKeys: Object.keys(schema),
+          dbQueryKeys: db.query ? Object.keys(db.query) : 'db.query is undefined'
+        }
+      });
+    }
+    
+    return db;
+  } catch (error) {
+    console.error('DB initialization error:', error);
+    Sentry.captureException(error, {
+      extra: { context: 'Database initialization' }
+    });
+    throw error;
+  }
 }
 
 export function handleApiError(error, res, context = {}) {

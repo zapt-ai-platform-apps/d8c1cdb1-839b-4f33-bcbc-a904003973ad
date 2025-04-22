@@ -1,19 +1,42 @@
 import { companies, companyTags, tags } from '../drizzle/schema.js';
-import { getDB, handleApiError, authenticateUser } from './_apiUtils.js';
-import { desc } from 'drizzle-orm';
+import { getDB, handleApiError, authenticateUser, Sentry } from './_apiUtils.js';
+import { desc, eq } from 'drizzle-orm';
 
 export default async function handler(req, res) {
   console.log(`[API] ${req.method} /api/companies`);
-  const db = getDB();
   
   try {
+    const db = getDB();
+    
+    // Add validation to ensure db is properly initialized
+    if (!db || !db.query) {
+      throw new Error('Database connection failed - db or db.query is undefined');
+    }
+    
+    // Validate that the companies table query is available
+    if (!db.query.companies) {
+      console.error('db.query properties:', Object.keys(db.query));
+      throw new Error('Companies table not found in query builder');
+    }
+    
     // GET - list all companies
     if (req.method === 'GET') {
-      const allCompanies = await db.query.companies.findMany({
-        orderBy: [desc(companies.createdAt)]
-      });
-      console.log(`Retrieved ${allCompanies.length} companies`);
-      return res.status(200).json(allCompanies);
+      console.log('Fetching all companies');
+      
+      try {
+        // First try with the query builder
+        const allCompanies = await db.query.companies.findMany({
+          orderBy: [desc(companies.createdAt)]
+        });
+        console.log(`Retrieved ${allCompanies.length} companies`);
+        return res.status(200).json(allCompanies);
+      } catch (queryError) {
+        console.error('Error using query builder, falling back to basic select:', queryError);
+        // Fallback to basic select if query builder fails
+        const allCompanies = await db.select().from(companies).orderBy(desc(companies.createdAt));
+        console.log(`Retrieved ${allCompanies.length} companies (using fallback)}`);
+        return res.status(200).json(allCompanies);
+      }
     } 
     
     // POST - create a new company
