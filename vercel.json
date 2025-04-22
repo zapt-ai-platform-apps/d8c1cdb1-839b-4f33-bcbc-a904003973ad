@@ -1,17 +1,18 @@
 {
-    "rewrites": [
-        {
-            "source": "/api/(.*)",
-            "destination": "/api/$1"
-        },
-        {
-            "source": "/(.*)",
-            "destination": "/index.html"
-        }
-    ],
-    "functions": {
-        "api/*.js": {
-            "includeFiles": "../drizzle/schema.js"
-        }
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/$1"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
     }
+  ],
+  "functions": {
+    "api/*.js": {
+      "includeFiles": "../drizzle/schema.js",
+      "maxDuration": 60
+    }
+  }
 }

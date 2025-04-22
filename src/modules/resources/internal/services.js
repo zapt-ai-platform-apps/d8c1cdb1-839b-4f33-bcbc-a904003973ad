@@ -88,9 +88,9 @@ export const fetchResourceById = async (id) => {
  */
 export const createResource = async (resourceData) => {
   try {
-    // Process URL if needed
+    // Process URL if needed - only if it's not an uploaded file URL
     let url = resourceData.link;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
     
@@ -124,6 +124,9 @@ export const createResource = async (resourceData) => {
     
     const data = await response.json();
     
+    // Show what we received for debugging
+    console.log('Resource creation response:', data);
+    
     // Validate response data
     const validatedData = validateResource(data, {
       actionName: 'createResourceResponse',
@@ -154,9 +157,9 @@ export const createResource = async (resourceData) => {
  */
 export const updateResource = async (id, resourceData) => {
   try {
-    // Process URL if needed
+    // Process URL if needed - only if it's not an uploaded file URL
     let url = resourceData.link;
-    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
       url = 'https://' + url;
     }
     
