@@ -23,8 +23,9 @@ export const fetchTags = async (type = null) => {
     }
     
     const data = await response.json();
+    console.log("Tags data received:", data);
     
-    // Validate response data
+    // Validate response data - with updated schema that handles string->number and string->date conversion
     const validatedData = validateTagList(data, {
       actionName: 'fetchTags',
       location: 'tags/internal/services.js',
@@ -42,7 +43,9 @@ export const fetchTags = async (type = null) => {
     Sentry.captureException(error, {
       extra: {
         action: 'fetchTags',
-        type
+        type,
+        message: error.message,
+        stack: error.stack
       }
     });
     throw error;
@@ -97,7 +100,9 @@ export const createTag = async (tagData) => {
     Sentry.captureException(error, {
       extra: {
         action: 'createTag',
-        tagData
+        tagData,
+        message: error.message,
+        stack: error.stack
       }
     });
     throw error;
