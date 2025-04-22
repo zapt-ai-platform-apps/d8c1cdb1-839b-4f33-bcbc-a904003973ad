@@ -1,6 +1,26 @@
 {
   "rewrites": [
     {
+      "source": "/api/companies/:id",
+      "destination": "/api/companies/[id]"
+    },
+    {
+      "source": "/api/engagements/:id",
+      "destination": "/api/engagements/[id]"
+    },
+    {
+      "source": "/api/resources/:id",
+      "destination": "/api/resources/[id]"
+    },
+    {
+      "source": "/api/activities/:id",
+      "destination": "/api/activities/[id]"
+    },
+    {
+      "source": "/api/files/:id",
+      "destination": "/api/files/[id]"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     },

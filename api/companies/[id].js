@@ -4,18 +4,41 @@ import { eq } from 'drizzle-orm';
 
 export default async function handler(req, res) {
   try {
-    // Extract id from either query params or URL path
-    // Vercel provides the path parameter in req.query for dynamic routes
-    const id = req.query.id;
-    console.log(`[API] ${req.method} /api/companies/${id}`, { query: req.query });
+    // Extract id from either query params or URL path segments
+    // Normalize how we get the ID parameter from different environments
+    const rawId = req.query.id || req.url.split('/').pop();
     
-    if (!id || isNaN(Number(id))) {
-      console.error(`Invalid company ID: ${id}`);
-      return res.status(400).json({ error: 'Invalid company ID' });
+    console.log(`[API] ${req.method} /api/companies/${rawId}`, { 
+      query: req.query,
+      url: req.url,
+      headers: {
+        contentType: req.headers['content-type'],
+        accept: req.headers['accept']
+      }
+    });
+    
+    if (!rawId) {
+      console.error('Company ID is missing');
+      return res.status(400).json({ error: 'Company ID is required' });
     }
     
-    const companyId = Number(id);
+    // Handle potential BigInt IDs (for IDs like 1065784524843483100)
+    let companyId;
+    try {
+      companyId = BigInt(rawId);
+      // Convert back to number for DB operations if within safe integer range
+      if (companyId <= Number.MAX_SAFE_INTEGER) {
+        companyId = Number(companyId);
+      }
+    } catch (error) {
+      console.error(`Invalid company ID format: ${rawId}`, error);
+      return res.status(400).json({ error: 'Invalid company ID format' });
+    }
+    
     const db = getDB();
+    
+    // Check response headers based on what client expects
+    res.setHeader('Content-Type', 'application/json');
     
     // GET - retrieve company with all related data
     if (req.method === 'GET') {
@@ -136,6 +159,7 @@ export default async function handler(req, res) {
     return handleApiError(error, res, {
       method: req.method,
       endpoint: `/api/companies/${req.query?.id}`,
+      url: req.url,
       body: req.body
     });
   }

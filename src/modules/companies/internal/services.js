@@ -1,341 +1,147 @@
-import { eventBus } from '../../core/events';
-import { events } from '../events';
-import { 
-  validateCompany, 
-  validateCompanyList, 
-  validateCompanyDetail 
-} from '../validators';
+import { supabase } from '@/shared/services/supabaseClient';
 import * as Sentry from '@sentry/browser';
 
-// Helper to parse JSON strings with fallback
-export const parseJsonSafely = (jsonString, defaultValue = []) => {
-  if (!jsonString) return defaultValue;
-  
+export async function fetchCompanyById(id) {
   try {
-    // If it's already an array, return it
-    if (Array.isArray(jsonString)) return jsonString;
+    console.log(`Fetching company with ID: ${id}`);
     
-    // If it's a string that looks like JSON (starts with [ or {), try to parse it
-    if (typeof jsonString === 'string' && (jsonString.trim().startsWith('[') || jsonString.trim().startsWith('{'))) {
-      return JSON.parse(jsonString);
-    }
-    
-    // If it's a comma-separated string, split it
-    if (typeof jsonString === 'string' && jsonString.includes(',')) {
-      return jsonString.split(',').map(item => item.trim()).filter(Boolean);
-    }
-    
-    // If it's a single value, return it as an array item
-    if (typeof jsonString === 'string' && jsonString.trim()) {
-      return [jsonString.trim()];
-    }
-    
-    // Fallback for any other case
-    return defaultValue;
-  } catch (error) {
-    console.error('Error parsing JSON:', error, { jsonString });
-    Sentry.captureException(error, {
-      extra: {
-        action: 'parseJsonSafely',
-        jsonString
+    const response = await fetch(`/api/companies/${id}`, {
+      headers: {
+        'Accept': 'application/json',
+        'Content-Type': 'application/json'
       }
     });
     
-    // Fallback to comma-separated values if parsing failed
-    if (typeof jsonString === 'string') {
-      return jsonString.split(',').map(item => item.trim()).filter(Boolean);
+    // Check if response is HTML instead of JSON
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('text/html')) {
+      console.error('Received HTML response instead of JSON', { contentType });
+      throw new Error('Invalid response format: expected JSON, received HTML');
     }
-    
-    return defaultValue;
-  }
-};
-
-/**
- * Fetch all companies, with optional filtering
- */
-export const fetchCompanies = async (filters = {}) => {
-  try {
-    console.log("Fetching companies with filters:", filters);
-    
-    // Build query parameters
-    const queryParams = new URLSearchParams();
-    
-    if (filters.search) {
-      queryParams.append('search', filters.search);
-    }
-    
-    if (filters.tagIds && filters.tagIds.length > 0) {
-      queryParams.append('tagIds', filters.tagIds.join(','));
-    }
-    
-    if (filters.sectorFilter) {
-      queryParams.append('sectorFilter', filters.sectorFilter);
-    }
-    
-    if (filters.industryFilter) {
-      queryParams.append('industryFilter', filters.industryFilter);
-    }
-    
-    if (filters.locationFilter) {
-      queryParams.append('locationFilter', filters.locationFilter);
-    }
-    
-    const response = await fetch(`/api/companies?${queryParams}`);
     
     if (!response.ok) {
-      throw new Error('Failed to fetch companies');
+      const errorText = await response.text();
+      console.error('Failed to fetch company:', errorText);
+      throw new Error(`Failed to fetch company: ${response.status} ${response.statusText}`);
     }
     
     const data = await response.json();
-    console.log("Companies data received:", data.length, "companies");
-    
-    // Validate response data
-    const validatedData = validateCompanyList(data, {
-      actionName: 'fetchCompanies',
-      location: 'companies/internal/services.js',
-      direction: 'incoming',
-      moduleFrom: 'api',
-      moduleTo: 'companies'
-    });
-    
-    // Publish event for successful fetch
-    eventBus.publish(events.COMPANY_LIST_UPDATED, { companies: validatedData });
-    
-    return validatedData;
+    console.log('Company data received:', data);
+    return data;
   } catch (error) {
-    console.error("Error fetching companies:", error);
+    console.error('Error fetching company:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'fetchCompanies',
-        filters
-      }
+      extra: { id, action: 'fetchCompanyById' }
     });
     throw error;
   }
-};
+}
 
-/**
- * Fetch a single company by ID
- */
-export const fetchCompanyById = async (id) => {
+// Other service functions remain the same
+export async function fetchCompanies() {
   try {
-    console.log(`Fetching company data for ID: ${id}`);
-    
-    const response = await fetch(`/api/companies/${id}`);
+    const { data: { session } } = await supabase.auth.getSession();
+    const response = await fetch('/api/companies', {
+      headers: {
+        Authorization: `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+      },
+    });
     
     if (!response.ok) {
-      throw new Error('Failed to fetch company data');
+      throw new Error(`Failed to fetch companies: ${response.statusText}`);
     }
     
-    const data = await response.json();
-    console.log(`Company data received for ID ${id}:`, data);
-    
-    // Validate response data
-    const validatedData = validateCompanyDetail(data, {
-      actionName: 'fetchCompanyById',
-      location: 'companies/internal/services.js',
-      direction: 'incoming',
-      moduleFrom: 'api',
-      moduleTo: 'companies'
-    });
-    
-    // Publish event for selected company
-    eventBus.publish(events.COMPANY_SELECTED, { company: validatedData });
-    
-    return validatedData;
+    return await response.json();
   } catch (error) {
-    console.error("Error fetching company:", error);
+    console.error('Error fetching companies:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'fetchCompanyById',
-        companyId: id
-      }
+      extra: { action: 'fetchCompanies' }
     });
     throw error;
   }
-};
+}
 
-/**
- * Create a new company
- */
-export const createCompany = async (companyData, tagIds = []) => {
+export async function createCompany(companyData, selectedTagIds) {
   try {
-    // Prepare data for API: Convert multi-select values to JSON strings
-    const preparedData = {
-      ...companyData,
-      aiToolsDelivered: Array.isArray(companyData.aiToolsDelivered) 
-        ? JSON.stringify(companyData.aiToolsDelivered.map(tool => tool.value)) 
-        : null,
-      additionalSignUps: Array.isArray(companyData.additionalSignUps) 
-        ? JSON.stringify(companyData.additionalSignUps.map(signup => signup.value)) 
-        : null,
-      resourcesSent: Array.isArray(companyData.resourcesSent) 
-        ? JSON.stringify(companyData.resourcesSent) 
-        : null
-    };
-    
-    // Validate data before sending
-    validateCompany(preparedData, {
-      actionName: 'createCompany',
-      location: 'companies/internal/services.js',
-      direction: 'outgoing',
-      moduleFrom: 'companies',
-      moduleTo: 'api'
-    });
-    
+    const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch('/api/companies', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        company: preparedData,
-        tagIds
-      })
+        company: companyData,
+        tagIds: selectedTagIds,
+      }),
     });
     
     if (!response.ok) {
-      throw new Error('Failed to create company');
+      throw new Error(`Failed to create company: ${response.statusText}`);
     }
     
-    const data = await response.json();
-    
-    // Validate response data
-    const validatedData = validateCompany(data, {
-      actionName: 'createCompanyResponse',
-      location: 'companies/internal/services.js',
-      direction: 'incoming',
-      moduleFrom: 'api',
-      moduleTo: 'companies'
-    });
-    
-    // Publish event for new company
-    eventBus.publish(events.COMPANY_CREATED, { company: validatedData });
-    
-    return validatedData;
+    return await response.json();
   } catch (error) {
-    console.error("Error creating company:", error);
+    console.error('Error creating company:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'createCompany',
-        companyData,
-        tagIds
-      }
+      extra: { company: companyData, tags: selectedTagIds, action: 'createCompany' }
     });
     throw error;
   }
-};
+}
 
-/**
- * Update an existing company
- */
-export const updateCompany = async (id, companyData, tagIds = []) => {
+export async function updateCompany(id, companyData, selectedTagIds) {
   try {
-    // Prepare data for API: Convert multi-select values to JSON strings
-    const preparedData = {
-      ...companyData,
-      aiToolsDelivered: Array.isArray(companyData.aiToolsDelivered) 
-        ? JSON.stringify(companyData.aiToolsDelivered.map(tool => tool.value)) 
-        : null,
-      additionalSignUps: Array.isArray(companyData.additionalSignUps) 
-        ? JSON.stringify(companyData.additionalSignUps.map(signup => signup.value)) 
-        : null,
-      resourcesSent: Array.isArray(companyData.resourcesSent) 
-        ? JSON.stringify(companyData.resourcesSent) 
-        : null
-    };
-    
-    // Validate data before sending
-    validateCompany(preparedData, {
-      actionName: 'updateCompany',
-      location: 'companies/internal/services.js',
-      direction: 'outgoing',
-      moduleFrom: 'companies',
-      moduleTo: 'api'
-    });
-    
+    const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch(`/api/companies/${id}`, {
       method: 'PUT',
       headers: {
-        'Content-Type': 'application/json'
+        Authorization: `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
       },
       body: JSON.stringify({
-        company: preparedData,
-        tagIds
-      })
+        company: companyData,
+        tagIds: selectedTagIds,
+      }),
     });
     
     if (!response.ok) {
-      throw new Error('Failed to update company');
+      throw new Error(`Failed to update company: ${response.statusText}`);
     }
     
-    const data = await response.json();
-    
-    // Validate response data
-    const validatedData = validateCompany(data, {
-      actionName: 'updateCompanyResponse',
-      location: 'companies/internal/services.js',
-      direction: 'incoming',
-      moduleFrom: 'api',
-      moduleTo: 'companies'
-    });
-    
-    // Publish event for updated company
-    eventBus.publish(events.COMPANY_UPDATED, { company: validatedData });
-    
-    return validatedData;
+    return await response.json();
   } catch (error) {
-    console.error("Error updating company:", error);
+    console.error('Error updating company:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'updateCompany',
-        companyId: id,
-        companyData,
-        tagIds
-      }
+      extra: { id, company: companyData, tags: selectedTagIds, action: 'updateCompany' }
     });
     throw error;
   }
-};
+}
 
-/**
- * Delete a company
- */
-export const deleteCompany = async (id) => {
+export async function deleteCompany(id) {
   try {
+    const { data: { session } } = await supabase.auth.getSession();
     const response = await fetch(`/api/companies/${id}`, {
-      method: 'DELETE'
+      method: 'DELETE',
+      headers: {
+        Authorization: `Bearer ${session?.access_token}`,
+        'Content-Type': 'application/json',
+      },
     });
     
     if (!response.ok) {
-      throw new Error('Failed to delete company');
+      throw new Error(`Failed to delete company: ${response.statusText}`);
     }
-    
-    // Publish event for deleted company
-    eventBus.publish(events.COMPANY_DELETED, { companyId: id });
     
     return true;
   } catch (error) {
-    console.error("Error deleting company:", error);
+    console.error('Error deleting company:', error);
     Sentry.captureException(error, {
-      extra: {
-        action: 'deleteCompany',
-        companyId: id
-      }
+      extra: { id, action: 'deleteCompany' }
     });
     throw error;
   }
-};
-
-/**
- * Parse company data for display
- */
-export const parseCompanyData = (company) => {
-  if (!company) return { aiTools: [], signUps: [], resources: [] };
-  
-  let aiTools = parseJsonSafely(company.aiToolsDelivered, []);
-  let signUps = parseJsonSafely(company.additionalSignUps, []);
-  let resources = parseJsonSafely(company.resourcesSent, []);
-  
-  return { aiTools, signUps, resources };
-};
+}

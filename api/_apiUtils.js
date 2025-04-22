@@ -77,11 +77,26 @@ export function getDB() {
 }
 
 export function handleApiError(error, res, context = {}) {
-  console.error('API Error:', error.message);
+  console.error('API Error:', error.message, error.stack);
+  
+  // Check if the response has already been sent
+  if (res.headersSent) {
+    console.error('Headers already sent, cannot send error response');
+    return;
+  }
+  
+  // Set content-type header to ensure JSON response
+  res.setHeader('Content-Type', 'application/json');
+  
   Sentry.captureException(error, { 
     extra: context
   });
-  return res.status(500).json({ error: 'Internal server error' });
+  
+  return res.status(500).json({ 
+    error: 'Internal server error', 
+    message: error.message,
+    path: context.endpoint || 'unknown'
+  });
 }
 
 export { Sentry };
