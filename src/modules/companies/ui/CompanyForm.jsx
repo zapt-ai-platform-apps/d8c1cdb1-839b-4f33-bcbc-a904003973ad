@@ -69,11 +69,16 @@ const CompanyForm = () => {
           const data = await companiesApi.getCompanyById(id);
           
           // Parse stored multi-select values if they exist
-          const { aiTools, signUps, resources } = companiesApi.parseCompanyData(data);
+          const parsedData = companiesApi.parseCompanyData(data);
+          
+          // Get the correct field names with fallbacks
+          const aiToolsDelivered = parsedData?.aiToolsDelivered || [];
+          const additionalSignUps = parsedData?.additionalSignUps || [];
+          const resourcesSent = parsedData?.resourcesSent || [];
           
           // Convert parsed data to react-select format
-          const aiToolsMapped = aiTools.map(tool => ({ value: tool, label: tool }));
-          const signUpsMapped = signUps.map(signUp => ({ value: signUp, label: signUp }));
+          const aiToolsMapped = aiToolsDelivered.map(tool => ({ value: tool, label: tool }));
+          const signUpsMapped = additionalSignUps.map(signUp => ({ value: signUp, label: signUp }));
           
           setFormData({
             name: data.name || '',
@@ -90,7 +95,7 @@ const CompanyForm = () => {
             additionalSignUps: signUpsMapped,
             valueToCollege: data.valueToCollege || '',
             engagementNotes: data.engagementNotes || '',
-            resourcesSent: resources,
+            resourcesSent: resourcesSent.map(resource => ({ value: resource, label: resource })),
             selectedTags: data.tags.map(tag => tag.id) || []
           });
         } catch (error) {
