@@ -1,5 +1,5 @@
 import { companies, engagements, additionalActivities, resourceDistributions, followUpActions } from '../drizzle/schema.js';
-import { getDB, handleApiError } from './_apiUtils.js';
+import { getDB, handleApiError, Sentry } from './_apiUtils.js';
 import { eq, sql, and, gt, lt } from 'drizzle-orm';
 
 export default async function handler(req, res) {
@@ -23,7 +23,10 @@ export default async function handler(req, res) {
       .from(engagements);
     
     // Get upcoming tasks
-    const today = new Date();
+    // Convert Date object to ISO string format for database compatibility
+    const today = new Date().toISOString();
+    console.log('[API] Dashboard - Using date (ISO format):', today);
+    
     const upcomingTasks = await db
       .select({
         id: followUpActions.id,
@@ -36,7 +39,7 @@ export default async function handler(req, res) {
       .where(
         and(
           eq(followUpActions.completed, false),
-          gt(followUpActions.dueDate, today)
+          gt(followUpActions.dueDate, today) // Now using ISO string format
         )
       )
       .orderBy(followUpActions.dueDate)
@@ -83,8 +86,13 @@ export default async function handler(req, res) {
     
     return res.status(200).json(dashboardData);
   } catch (error) {
-    return handleApiError(error, res, {
-      endpoint: '/api/dashboard'
+    console.error('[API] Dashboard error:', error.message);
+    Sentry.captureException(error, {
+      extra: {
+        endpoint: '/api/dashboard',
+        details: 'Error fetching dashboard data'
+      }
     });
+    return res.status(500).json({ error: 'Internal server error', message: error.message });
   }
 }
