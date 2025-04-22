@@ -28,6 +28,12 @@ export async function fetchActivitiesForCompany(companyId) {
   }
 }
 
+// Add fetchActivities as an alias to fetchActivitiesForCompany
+// This ensures compatibility with the API module
+export async function fetchActivities(companyId) {
+  return fetchActivitiesForCompany(companyId);
+}
+
 export async function createActivity(activityData) {
   try {
     if (!activityData || !activityData.companyId) {
