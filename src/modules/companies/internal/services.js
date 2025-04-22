@@ -37,6 +37,53 @@ export async function fetchCompanyById(id) {
   }
 }
 
+/**
+ * Parse company data fields that might be stored as strings but represent structured data
+ * @param {Object} company - Company data
+ * @returns {Object} - Company with parsed fields
+ */
+export function parseCompanyData(company) {
+  if (!company) return null;
+  
+  const parsedCompany = { ...company };
+  
+  // Helper function to safely parse potential JSON strings
+  const safeParseStringField = (field) => {
+    if (!parsedCompany[field]) return [];
+    
+    if (typeof parsedCompany[field] !== 'string') return parsedCompany[field];
+    
+    try {
+      // Check if it looks like JSON
+      if (parsedCompany[field].trim().startsWith('[')) {
+        return JSON.parse(parsedCompany[field]);
+      } else {
+        // Fallback to comma-separated format
+        return parsedCompany[field]
+          .split(',')
+          .map(item => item.trim())
+          .filter(Boolean);
+      }
+    } catch (error) {
+      console.error(`Error parsing ${field} field:`, error);
+      Sentry.captureException(error, {
+        extra: { field, value: parsedCompany[field], action: 'parseCompanyData' }
+      });
+      return [];
+    }
+  };
+  
+  // Fields that might contain arrays as strings
+  const arrayFields = ['resourcesSent', 'aiToolsDelivered', 'additionalSignUps'];
+  
+  // Parse each field
+  arrayFields.forEach(field => {
+    parsedCompany[field] = safeParseStringField(field);
+  });
+  
+  return parsedCompany;
+}
+
 // Other service functions remain the same
 export async function fetchCompanies() {
   try {
