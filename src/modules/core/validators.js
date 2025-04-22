@@ -27,7 +27,14 @@ export const createValidator = (schema, contextName) => {
       moduleFrom = 'unknown',
       moduleTo = 'unknown'
     } = options;
+    
     try {
+      // Add debugging for data type issues
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`[Validation] ${contextName} in ${actionName} - Data received:`, 
+          typeof data === 'object' ? JSON.stringify(data, null, 2) : data);
+      }
+      
       return schema.parse(data);
     } catch (error) {
       // Create full context for error reporting
@@ -45,16 +52,18 @@ export const createValidator = (schema, contextName) => {
         JSON.stringify(data, (key, value) => 
           ['password', 'token', 'secret'].includes(key) ? '[REDACTED]' : value
         ) : String(data);
+      
       // Format validation errors
       const formattedErrors = error.errors?.map(err => 
         `${err.path.join('.')}: ${err.message}`
       ).join('\n') || error.message;
       
       // Create descriptive error message with full context
-      const errorMessage = `Validation failed in ${validationContext.action} (${validationContext.flow})\n` +
-                          `Context: ${contextName} (${direction})\n` +
-                          `Location: ${location}\n` +
-                          `Errors:\n${formattedErrors}`;
+      const errorMessage = `Validation failed in ${validationContext.action} (${validationContext.flow})
+Context: ${contextName} (${direction})
+Location: ${location}
+Errors:
+${formattedErrors}`;
       
       // Log to console with detailed info
       console.error(errorMessage, '\nReceived:', safeData);

@@ -3,8 +3,13 @@ import { createValidator } from '../core/validators';
 
 // Define the dashboard data schema
 export const dashboardDataSchema = z.object({
-  companiesCount: z.number(),
-  engagementsCount: z.number(),
+  // Make the validator resilient by accepting both strings and numbers for count fields
+  companiesCount: z.union([z.string(), z.number()]).transform(val => 
+    typeof val === 'string' ? Number(val) : val
+  ),
+  engagementsCount: z.union([z.string(), z.number()]).transform(val => 
+    typeof val === 'string' ? Number(val) : val
+  ),
   upcomingTasks: z.array(z.object({
     id: z.number(),
     task: z.string(),
@@ -12,12 +17,18 @@ export const dashboardDataSchema = z.object({
     completed: z.boolean(),
     engagementId: z.number()
   })),
-  totalValue: z.number(),
+  totalValue: z.union([z.string(), z.number()]).transform(val => 
+    typeof val === 'string' ? Number(val) : val
+  ),
   recentCompanies: z.array(z.any()),
-  resourcesDistributedCount: z.number(),
+  resourcesDistributedCount: z.union([z.string(), z.number()]).transform(val => 
+    typeof val === 'string' ? Number(val) : val
+  ),
   engagementStatusCounts: z.array(z.object({
     status: z.string(),
-    count: z.number()
+    count: z.union([z.string(), z.number()]).transform(val => 
+      typeof val === 'string' ? Number(val) : val
+    )
   }))
 });
 

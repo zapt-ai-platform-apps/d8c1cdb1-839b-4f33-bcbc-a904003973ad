@@ -73,15 +73,18 @@ export default async function handler(req, res) {
       .from(engagements)
       .groupBy(engagements.status);
     
-    // Package all data
+    // Package all data - explicitly convert all count fields to numbers
     const dashboardData = {
-      companiesCount: companiesCount.count,
-      engagementsCount: engagementsCount.count,
+      companiesCount: Number(companiesCount.count),
+      engagementsCount: Number(engagementsCount.count),
       upcomingTasks,
-      totalValue: totalValue.sum || 0,
+      totalValue: totalValue.sum ? Number(totalValue.sum) : 0,
       recentCompanies,
-      resourcesDistributedCount: resourcesDistributedCount.count,
-      engagementStatusCounts
+      resourcesDistributedCount: Number(resourcesDistributedCount.count),
+      engagementStatusCounts: engagementStatusCounts.map(item => ({
+        status: item.status,
+        count: Number(item.count)
+      }))
     };
     
     return res.status(200).json(dashboardData);
