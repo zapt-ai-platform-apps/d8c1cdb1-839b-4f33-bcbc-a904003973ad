@@ -39,9 +39,19 @@ const CompanyDetail = () => {
         setLoading(true);
         console.log(`Fetching company data for ID: ${id}`);
         
-        const response = await fetch(`/api/companies/${id}`);
+        // Include a timestamp to prevent caching
+        const response = await fetch(`/api/companies/${id}?_t=${Date.now()}`);
+        
+        // Check for non-OK responses
         if (!response.ok) {
-          throw new Error('Failed to fetch company data');
+          const errorText = await response.text();
+          throw new Error(`Failed to fetch company data: ${response.status} ${response.statusText} - ${errorText}`);
+        }
+        
+        // Check if the response is HTML instead of JSON
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('text/html')) {
+          throw new Error('Received HTML instead of JSON. This suggests an API routing issue.');
         }
         
         const data = await response.json();
@@ -99,9 +109,18 @@ const CompanyDetail = () => {
   const refreshCompanyData = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/companies/${id}`);
+      const response = await fetch(`/api/companies/${id}?_t=${Date.now()}`);
+      
+      // Check for non-OK responses
       if (!response.ok) {
-        throw new Error('Failed to refresh company data');
+        const errorText = await response.text();
+        throw new Error(`Failed to refresh company data: ${response.status} ${response.statusText} - ${errorText}`);
+      }
+      
+      // Check if the response is HTML instead of JSON
+      const contentType = response.headers.get('content-type');
+      if (contentType && contentType.includes('text/html')) {
+        throw new Error('Received HTML instead of JSON. This suggests an API routing issue.');
       }
       
       const data = await response.json();
@@ -129,16 +148,46 @@ const CompanyDetail = () => {
     let resources = [];
     
     try {
+      // First check if the data is already in JSON format
       if (company.aiToolsDelivered) {
-        aiTools = JSON.parse(company.aiToolsDelivered);
+        if (typeof company.aiToolsDelivered === 'string') {
+          // Check if it starts with '[' to determine if it's JSON
+          if (company.aiToolsDelivered.trim().startsWith('[')) {
+            aiTools = JSON.parse(company.aiToolsDelivered);
+          } else {
+            // Fall back to comma-separated parsing
+            aiTools = company.aiToolsDelivered.split(',').map(item => item.trim()).filter(Boolean);
+          }
+        } else if (Array.isArray(company.aiToolsDelivered)) {
+          aiTools = company.aiToolsDelivered;
+        }
       }
       
       if (company.additionalSignUps) {
-        signUps = JSON.parse(company.additionalSignUps);
+        if (typeof company.additionalSignUps === 'string') {
+          if (company.additionalSignUps.trim().startsWith('[')) {
+            signUps = JSON.parse(company.additionalSignUps);
+          } else {
+            signUps = company.additionalSignUps.split(',').map(item => item.trim()).filter(Boolean);
+          }
+        } else if (Array.isArray(company.additionalSignUps)) {
+          signUps = company.additionalSignUps;
+        }
       }
       
       if (company.resourcesSent) {
-        resources = JSON.parse(company.resourcesSent);
+        if (typeof company.resourcesSent === 'string') {
+          if (company.resourcesSent.trim().startsWith('[')) {
+            resources = JSON.parse(company.resourcesSent);
+          } else {
+            // For resources, we need objects with label property
+            resources = company.resourcesSent.split(',')
+              .map(item => ({ label: item.trim() }))
+              .filter(item => item.label);
+          }
+        } else if (Array.isArray(company.resourcesSent)) {
+          resources = company.resourcesSent;
+        }
       }
     } catch (error) {
       console.error('Error parsing company data:', error);

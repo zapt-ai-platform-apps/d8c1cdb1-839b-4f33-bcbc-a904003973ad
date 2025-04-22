@@ -1,84 +1,54 @@
 import { companies, companyTags, tags } from '../drizzle/schema.js';
-import { getDB, handleApiError } from './_apiUtils.js';
-import { eq, inArray, and, like } from 'drizzle-orm';
+import { getDB, handleApiError, authenticateUser } from './_apiUtils.js';
+import { desc } from 'drizzle-orm';
 
 export default async function handler(req, res) {
   console.log(`[API] ${req.method} /api/companies`);
   const db = getDB();
   
   try {
-    // GET - retrieve companies, with optional filters
+    // GET - list all companies
     if (req.method === 'GET') {
-      const { search, tagIds, industryFilter, sectorFilter, locationFilter } = req.query;
-      
-      let query = db.select().from(companies);
-      
-      // Apply search filter
-      if (search) {
-        query = query.where(like(companies.name, `%${search}%`));
-      }
-      
-      // Apply tag filters
-      if (tagIds) {
-        // Get company IDs that have the specified tags
-        const tagList = tagIds.split(',').map(Number);
-        const companiesWithTags = await db
-          .select({ companyId: companyTags.companyId })
-          .from(companyTags)
-          .where(inArray(companyTags.tagId, tagList));
-        
-        const companyIdsWithTags = companiesWithTags.map(c => c.companyId);
-        
-        if (companyIdsWithTags.length > 0) {
-          query = query.where(inArray(companies.id, companyIdsWithTags));
-        } else {
-          // No companies have these tags
-          return res.status(200).json([]);
-        }
-      }
-      
-      // Apply industry filter
-      if (industryFilter) {
-        query = query.where(eq(companies.industry, industryFilter));
-      }
-      
-      // Apply sector filter
-      if (sectorFilter) {
-        query = query.where(eq(companies.sector, sectorFilter));
-      }
-      
-      // Apply location filter
-      if (locationFilter) {
-        query = query.where(eq(companies.location, locationFilter));
-      }
-      
-      const results = await query;
-      return res.status(200).json(results);
+      const allCompanies = await db.query.companies.findMany({
+        orderBy: [desc(companies.createdAt)]
+      });
+      console.log(`Retrieved ${allCompanies.length} companies`);
+      return res.status(200).json(allCompanies);
     } 
     
-    // POST - create new company
+    // POST - create a new company
     else if (req.method === 'POST') {
       const { company, tagIds = [] } = req.body;
       
-      const [newCompany] = await db.insert(companies).values({
-        name: company.name,
-        industry: company.industry,
-        location: company.location,
-        contactName: company.contactName,
-        contactRole: company.contactRole,
-        email: company.email,
-        phone: company.phone,
-        website: company.website,
-        socialMedia: company.socialMedia,
-        sector: company.sector,
-        aiToolsDelivered: company.aiToolsDelivered,
-        additionalSignUps: company.additionalSignUps,
-        valueToCollege: company.valueToCollege,
-        engagementNotes: company.engagementNotes,
-        resourcesSent: company.resourcesSent,
-        updatedAt: new Date(),
-      }).returning();
+      if (!company || !company.name) {
+        return res.status(400).json({ error: 'Company name is required' });
+      }
       
+      // Insert company data
+      const [newCompany] = await db
+        .insert(companies)
+        .values({
+          name: company.name,
+          industry: company.industry || null,
+          location: company.location || null,
+          contactName: company.contactName || null,
+          contactRole: company.contactRole || null,
+          email: company.email || null,
+          phone: company.phone || null,
+          website: company.website || null,
+          socialMedia: company.socialMedia || null,
+          sector: company.sector || null,
+          aiToolsDelivered: company.aiToolsDelivered || null,
+          additionalSignUps: company.additionalSignUps || null,
+          valueToCollege: company.valueToCollege || null,
+          engagementNotes: company.engagementNotes || null,
+          resourcesSent: company.resourcesSent || null,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .returning();
+      
+      // Insert tag associations if any
       if (tagIds.length > 0) {
         const tagValues = tagIds.map(tagId => ({
           companyId: newCompany.id,
@@ -88,10 +58,11 @@ export default async function handler(req, res) {
         await db.insert(companyTags).values(tagValues);
       }
       
+      console.log(`Created new company with ID: ${newCompany.id}`);
       return res.status(201).json(newCompany);
     } 
     
-    // Unsupported method
+    // Other methods
     else {
       return res.status(405).json({ error: 'Method not allowed' });
     }
@@ -99,8 +70,7 @@ export default async function handler(req, res) {
     return handleApiError(error, res, {
       method: req.method,
       endpoint: '/api/companies',
-      body: req.body,
-      query: req.query
+      body: req.method === 'POST' ? req.body : undefined
     });
   }
 }

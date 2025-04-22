@@ -1,19 +1,22 @@
 import { companies, companyTags, tags, engagements, additionalActivities, files } from '../../drizzle/schema.js';
-import { getDB, handleApiError } from '../_apiUtils.js';
-import { eq, and } from 'drizzle-orm';
+import { getDB, handleApiError, authenticateUser } from '../_apiUtils.js';
+import { eq } from 'drizzle-orm';
 
 export default async function handler(req, res) {
-  const { id } = req.query;
-  console.log(`[API] ${req.method} /api/companies/${id}`);
-  
-  if (!id || isNaN(Number(id))) {
-    return res.status(400).json({ error: 'Invalid company ID' });
-  }
-  
-  const companyId = Number(id);
-  const db = getDB();
-  
   try {
+    // Extract id from either query params or URL path
+    // Vercel provides the path parameter in req.query for dynamic routes
+    const id = req.query.id;
+    console.log(`[API] ${req.method} /api/companies/${id}`, { query: req.query });
+    
+    if (!id || isNaN(Number(id))) {
+      console.error(`Invalid company ID: ${id}`);
+      return res.status(400).json({ error: 'Invalid company ID' });
+    }
+    
+    const companyId = Number(id);
+    const db = getDB();
+    
     // GET - retrieve company with all related data
     if (req.method === 'GET') {
       // Get company details
@@ -22,6 +25,7 @@ export default async function handler(req, res) {
       });
       
       if (!company) {
+        console.log(`Company not found: ${companyId}`);
         return res.status(404).json({ error: 'Company not found' });
       }
       
@@ -63,6 +67,7 @@ export default async function handler(req, res) {
         files: companyFiles
       };
       
+      console.log(`Successfully retrieved company data for ID: ${companyId}`);
       return res.status(200).json(fullCompanyData);
     } 
     
@@ -108,6 +113,7 @@ export default async function handler(req, res) {
         await db.insert(companyTags).values(tagValues);
       }
       
+      console.log(`Successfully updated company ID: ${companyId}`);
       return res.status(200).json(updatedCompany);
     } 
     
@@ -117,17 +123,19 @@ export default async function handler(req, res) {
         .delete(companies)
         .where(eq(companies.id, companyId));
       
+      console.log(`Successfully deleted company ID: ${companyId}`);
       return res.status(204).send();
     } 
     
     // Unsupported method
     else {
+      console.log(`Unsupported method: ${req.method}`);
       return res.status(405).json({ error: 'Method not allowed' });
     }
   } catch (error) {
     return handleApiError(error, res, {
       method: req.method,
-      endpoint: `/api/companies/${id}`,
+      endpoint: `/api/companies/${req.query?.id}`,
       body: req.body
     });
   }
