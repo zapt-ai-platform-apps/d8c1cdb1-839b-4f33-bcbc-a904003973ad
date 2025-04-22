@@ -3,7 +3,7 @@ import { createValidator } from '../core/validators';
 
 // Define the company schema
 export const companySchema = z.object({
-  id: z.number().optional(),
+  id: z.coerce.number().optional(),
   name: z.string().min(1, "Company name is required"),
   industry: z.string().optional().nullable(),
   location: z.string().optional().nullable(),
@@ -19,8 +19,8 @@ export const companySchema = z.object({
   valueToCollege: z.number().optional().nullable(),
   engagementNotes: z.string().optional().nullable(),
   resourcesSent: z.string().optional().nullable(),
-  createdAt: z.date().optional(),
-  updatedAt: z.date().optional(),
+  createdAt: z.coerce.date().optional(),
+  updatedAt: z.coerce.date().optional(),
 });
 
 // Create validators
@@ -28,8 +28,8 @@ export const validateCompany = createValidator(companySchema, 'Company');
 
 // Tag association schema
 export const companyTagSchema = z.object({
-  companyId: z.number(),
-  tagIds: z.array(z.number())
+  companyId: z.coerce.number(),
+  tagIds: z.array(z.coerce.number())
 });
 
 export const validateCompanyTags = createValidator(companyTagSchema, 'CompanyTags');
@@ -41,7 +41,7 @@ export const validateCompanyList = createValidator(companyListSchema, 'CompanyLi
 // Company detail response schema (includes related data)
 export const companyDetailSchema = companySchema.extend({
   tags: z.array(z.object({
-    id: z.number(),
+    id: z.coerce.number(),
     name: z.string(),
     type: z.string()
   })).optional(),

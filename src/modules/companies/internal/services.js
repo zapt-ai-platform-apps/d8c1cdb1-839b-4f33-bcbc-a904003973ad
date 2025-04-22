@@ -12,9 +12,28 @@ export const parseJsonSafely = (jsonString, defaultValue = []) => {
   if (!jsonString) return defaultValue;
   
   try {
-    return JSON.parse(jsonString);
+    // If it's already an array, return it
+    if (Array.isArray(jsonString)) return jsonString;
+    
+    // If it's a string that looks like JSON (starts with [ or {), try to parse it
+    if (typeof jsonString === 'string' && (jsonString.trim().startsWith('[') || jsonString.trim().startsWith('{'))) {
+      return JSON.parse(jsonString);
+    }
+    
+    // If it's a comma-separated string, split it
+    if (typeof jsonString === 'string' && jsonString.includes(',')) {
+      return jsonString.split(',').map(item => item.trim()).filter(Boolean);
+    }
+    
+    // If it's a single value, return it as an array item
+    if (typeof jsonString === 'string' && jsonString.trim()) {
+      return [jsonString.trim()];
+    }
+    
+    // Fallback for any other case
+    return defaultValue;
   } catch (error) {
-    console.error('Error parsing JSON:', error);
+    console.error('Error parsing JSON:', error, { jsonString });
     Sentry.captureException(error, {
       extra: {
         action: 'parseJsonSafely',
@@ -22,9 +41,9 @@ export const parseJsonSafely = (jsonString, defaultValue = []) => {
       }
     });
     
-    // For arrays, try fallback to comma-separated values
-    if (Array.isArray(defaultValue)) {
-      return jsonString.split(',').map(item => item.trim());
+    // Fallback to comma-separated values if parsing failed
+    if (typeof jsonString === 'string') {
+      return jsonString.split(',').map(item => item.trim()).filter(Boolean);
     }
     
     return defaultValue;
@@ -68,6 +87,7 @@ export const fetchCompanies = async (filters = {}) => {
     }
     
     const data = await response.json();
+    console.log("Companies data received:", data.length, "companies");
     
     // Validate response data
     const validatedData = validateCompanyList(data, {
@@ -108,6 +128,7 @@ export const fetchCompanyById = async (id) => {
     }
     
     const data = await response.json();
+    console.log(`Company data received for ID ${id}:`, data);
     
     // Validate response data
     const validatedData = validateCompanyDetail(data, {

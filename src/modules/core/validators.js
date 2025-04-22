@@ -31,8 +31,11 @@ export const createValidator = (schema, contextName) => {
     try {
       // Add debugging for data type issues
       if (process.env.NODE_ENV !== 'production') {
-        console.log(`[Validation] ${contextName} in ${actionName} - Data received:`, 
-          typeof data === 'object' ? JSON.stringify(data, null, 2) : data);
+        console.log(`[Validation] ${contextName} in ${actionName} - Validating data of type:`, 
+          typeof data, Array.isArray(data) ? 'array' : 'not array');
+        
+        // For deeper debugging, uncomment this line
+        // console.log(`[Validation] Data sample:`, JSON.stringify(data instanceof Object ? Object.keys(data) : data).substring(0, 100) + '...');
       }
       
       return schema.parse(data);
