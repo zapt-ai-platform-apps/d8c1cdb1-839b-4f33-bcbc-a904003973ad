@@ -70,8 +70,10 @@ const ResourceDistribution = () => {
       setSubmitting(true);
       setError(null);
       
+      // FIXED: Pass id directly as string instead of using parseInt
+      // This prevents precision loss with large numbers
       const result = await resourcesApi.distributeResource(
-        parseInt(id, 10),
+        id, // Directly use string ID from URL params
         selectedCompanies.map(c => c.value),
         selectedTags.map(t => t.value)
       );
