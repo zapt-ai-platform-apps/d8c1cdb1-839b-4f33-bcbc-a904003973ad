@@ -110,24 +110,46 @@ const ResourceForm = () => {
     
     try {
       setSubmitting(true);
+      setError(null);
       
       // If we're using file upload, upload the file first
       if (uploadOption === 'file' && uploadFile) {
+        console.log('Preparing to upload file:', {
+          fileName: uploadFile.name,
+          fileSize: uploadFile.size,
+          fileType: uploadFile.type
+        });
+        
         const formDataUpload = new FormData();
         formDataUpload.append('file', uploadFile);
         
+        console.log('Sending file upload request...');
         const response = await fetch('/api/files', {
           method: 'POST',
           body: formDataUpload,
-          headers: {
-            // Don't set Content-Type header when uploading files with FormData
-          },
         });
         
         if (!response.ok) {
-          throw new Error('Failed to upload file');
+          // Try to get more detailed error information from the response
+          let errorMessage = 'Failed to upload file';
+          try {
+            const errorData = await response.json();
+            if (errorData.error) {
+              errorMessage = `${errorMessage}: ${errorData.error}`;
+            }
+            if (errorData.details) {
+              errorMessage = `${errorMessage} - ${errorData.details}`;
+            }
+          } catch (e) {
+            // If we can't parse the error response, just use the status
+            errorMessage = `${errorMessage} (Status: ${response.status})`;
+          }
+          
+          console.error('File upload failed:', errorMessage);
+          throw new Error(errorMessage);
         }
         
+        console.log('File upload successful!');
         const fileData = await response.json();
         
         // Update formData with the file URL
@@ -137,24 +159,34 @@ const ResourceForm = () => {
         }));
       }
       
+      // Create or update the resource
       let result;
       if (isEditing) {
+        console.log('Updating resource:', { id, formData });
         result = await resourcesApi.updateResource(id, formData);
       } else {
+        console.log('Creating new resource:', formData);
         result = await resourcesApi.createResource(formData);
       }
       
       navigate('/resources');
     } catch (error) {
       console.error(`Error ${isEditing ? 'updating' : 'creating'} resource:`, error);
-      setError(error.message);
+      setError(error.message || 'An unknown error occurred');
       Sentry.captureException(error, {
         extra: {
           component: 'ResourceForm',
           action: isEditing ? 'updateResource' : 'createResource',
+          uploadOption,
+          fileDetails: uploadFile ? {
+            name: uploadFile.name,
+            size: uploadFile.size,
+            type: uploadFile.type
+          } : null,
           formData
         }
       });
+    } finally {
       setSubmitting(false);
     }
   };

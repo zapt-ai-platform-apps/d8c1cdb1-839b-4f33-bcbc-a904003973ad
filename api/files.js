@@ -1,6 +1,7 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
-import { files } from '../drizzle/schema.js';
+import { files, companies } from '../drizzle/schema.js';
+import { eq } from 'drizzle-orm';
 import * as Sentry from '@sentry/node';
 import { createReadStream, readFileSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
@@ -79,30 +80,86 @@ export default async function handler(req, res) {
       // Parse the form data
       const { fields, files: uploadedFiles } = await parseForm(req);
       
+      console.log('Received file upload request with fields:', fields);
+      
       if (!uploadedFiles.file) {
+        console.error('No file found in upload request');
         return res.status(400).json({ error: 'No file uploaded' });
       }
       
       const file = uploadedFiles.file;
-      const companyId = fields.companyId ? parseInt(fields.companyId, 10) : null;
-      
-      // Upload file to Cloudinary
-      const result = await cloudinary.v2.uploader.upload(file.filepath, {
-        resource_type: 'auto', // auto-detect file type
-        folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV}`
-      });
-      
-      // Save file info to database
-      const fileData = {
+      console.log('File details:', {
         name: file.originalFilename,
         type: file.mimetype,
-        url: result.secure_url,
-        companyId: companyId
-      };
+        size: file.size
+      });
       
-      const insertResult = await db.insert(files).values(fileData).returning();
+      // Extract companyId if provided
+      let companyId = null;
+      if (fields.companyId && fields.companyId !== 'null' && fields.companyId !== '') {
+        try {
+          companyId = parseInt(fields.companyId, 10);
+          
+          // Verify company exists if ID is provided
+          if (companyId) {
+            const company = await db.select({ id: companies.id })
+              .from(companies)
+              .where(eq(companies.id, companyId))
+              .limit(1);
+              
+            if (company.length === 0) {
+              console.error(`Company with ID ${companyId} not found`);
+              return res.status(400).json({ error: `Company with ID ${companyId} not found` });
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing companyId:', error);
+          Sentry.captureException(error);
+          return res.status(400).json({ error: 'Invalid company ID format' });
+        }
+      }
       
-      return res.status(201).json(insertResult[0]);
+      try {
+        console.log('Uploading file to Cloudinary...');
+        // Upload file to Cloudinary
+        const result = await cloudinary.v2.uploader.upload(file.filepath, {
+          resource_type: 'auto', // auto-detect file type
+          folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV}`
+        });
+        
+        console.log('Cloudinary upload successful:', result.secure_url);
+        
+        // Prepare file data for database
+        const fileData = {
+          name: file.originalFilename,
+          type: file.mimetype,
+          url: result.secure_url,
+        };
+        
+        // Only include companyId if it's provided and valid
+        if (companyId) {
+          fileData.companyId = companyId;
+        }
+        
+        console.log('Inserting file data into database:', fileData);
+        // Save file info to database
+        const insertResult = await db.insert(files).values(fileData).returning();
+        
+        return res.status(201).json(insertResult[0]);
+      } catch (cloudinaryError) {
+        console.error('Error during Cloudinary upload:', cloudinaryError);
+        Sentry.captureException(cloudinaryError, {
+          extra: {
+            fileName: file.originalFilename,
+            fileType: file.mimetype,
+            fileSize: file.size
+          }
+        });
+        return res.status(500).json({ 
+          error: 'Failed to upload file to cloud storage',
+          details: cloudinaryError.message
+        });
+      }
     } 
     else {
       return res.status(405).json({ error: 'Method Not Allowed' });

@@ -57,7 +57,7 @@ export const additionalActivities = pgTable('additional_activities', {
 
 export const files = pgTable('files', {
   id: serial('id').primaryKey(),
-  companyId: integer('company_id').notNull().references(() => companies.id, { onDelete: 'cascade' }),
+  companyId: integer('company_id').references(() => companies.id, { onDelete: 'cascade' }), // Made optional
   name: text('name').notNull(),
   type: text('type'),
   url: text('url').notNull(),
