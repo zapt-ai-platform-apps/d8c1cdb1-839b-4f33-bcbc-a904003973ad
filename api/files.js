@@ -1,16 +1,12 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { files, companies } from '../drizzle/schema.js';
-import { eq } from 'drizzle-orm';
+import { eq, desc } from 'drizzle-orm';
 import * as Sentry from '@sentry/node';
-import { createReadStream, readFileSync, statSync } from 'fs';
-import { fileURLToPath } from 'url';
-import { dirname, join } from 'path';
 import formidable from 'formidable';
 import { v4 as uuidv4 } from 'uuid';
-import fs from 'fs';
-import { mkdir } from 'fs/promises';
 import * as cloudinary from 'cloudinary';
+import { Readable } from 'stream';
 
 // Initialize Sentry
 Sentry.init({
@@ -38,18 +34,59 @@ export const config = {
   },
 };
 
+// Helper function to convert buffer to stream
+const bufferToStream = (buffer) => {
+  const readable = new Readable();
+  readable._read = () => {}; // _read is required but you can noop it
+  readable.push(buffer);
+  readable.push(null);
+  return readable;
+};
+
 // Helper function to parse form data with formidable
 const parseForm = async (req) => {
   return new Promise((resolve, reject) => {
+    // Configure formidable to keep files in memory
     const form = formidable({
       maxFileSize: 20 * 1024 * 1024, // 20MB in bytes
       keepExtensions: true,
+      multiples: true,
+      // This is the key change - ensure files are kept in memory
+      fileWriteStreamHandler: () => {
+        let fileData = Buffer.alloc(0);
+        return {
+          write: (chunk) => {
+            fileData = Buffer.concat([fileData, chunk]);
+            return true;
+          },
+          end: () => {},
+          data: () => fileData,
+        };
+      }
     });
     
     form.parse(req, (err, fields, files) => {
       if (err) return reject(err);
       resolve({ fields, files });
     });
+  });
+};
+
+// Function to upload file to Cloudinary using buffer
+const uploadToCloudinary = (fileBuffer, fileType) => {
+  return new Promise((resolve, reject) => {
+    const uploadStream = cloudinary.v2.uploader.upload_stream(
+      {
+        resource_type: 'auto', // auto-detect file type
+        folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV}`
+      },
+      (error, result) => {
+        if (error) reject(error);
+        else resolve(result);
+      }
+    );
+    
+    bufferToStream(fileBuffer).pipe(uploadStream);
   });
 };
 
@@ -121,11 +158,18 @@ export default async function handler(req, res) {
       
       try {
         console.log('Uploading file to Cloudinary...');
-        // Upload file to Cloudinary
-        const result = await cloudinary.v2.uploader.upload(file.filepath, {
-          resource_type: 'auto', // auto-detect file type
-          folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV}`
-        });
+        
+        // Get the file buffer from the custom stream handler
+        const fileBuffer = file.toJSON ? file.toJSON().data : file._writeStream?.data();
+        
+        if (!fileBuffer) {
+          throw new Error('No file data found in the uploaded file');
+        }
+        
+        console.log(`Got file buffer with size: ${fileBuffer.length} bytes`);
+        
+        // Upload file to Cloudinary using the buffer
+        const result = await uploadToCloudinary(fileBuffer, file.mimetype);
         
         console.log('Cloudinary upload successful:', result.secure_url);
         
@@ -152,7 +196,9 @@ export default async function handler(req, res) {
           extra: {
             fileName: file.originalFilename,
             fileType: file.mimetype,
-            fileSize: file.size
+            fileSize: file.size,
+            formData: fields,
+            uploadOption: fields.uploadOption
           }
         });
         return res.status(500).json({ 
