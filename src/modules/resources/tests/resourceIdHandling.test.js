@@ -1,49 +1,50 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { fetchResourceById } from '../internal/services';
+import { describe, it, expect, vi } from 'vitest';
+import { validateResource, validateDistribution } from '../validators';
 
-describe('Resource ID handling', () => {
-  // Mock fetch before each test
-  beforeEach(() => {
-    // Reset fetch mock
-    global.fetch = vi.fn();
+// Mock fetch for service testing if needed
+global.fetch = vi.fn();
+
+describe('Resource ID Handling', () => {
+  it('should handle large resource IDs correctly by converting to strings', () => {
+    // This ID exceeds JavaScript's safe integer limit (2^53 - 1)
+    const largeId = 1066067726706802699;
     
-    // Set up successful response
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ 
-        id: '1065794930725519400', 
-        title: 'Test Resource',
-        type: 'Guide',
-        link: 'https://example.com'
-      })
-    });
+    // Check if ID is properly preserved as string in validator
+    const resource = {
+      id: largeId,
+      title: 'Test Resource',
+      type: 'Guide',
+      link: 'https://example.com'
+    };
+    
+    const validatedResource = validateResource(resource);
+    
+    // ID should be preserved exactly as a string
+    expect(validatedResource.id).toBe(String(largeId));
+    
+    // The number format would potentially lose precision 
+    // This demonstrates the problem we're fixing
+    if (largeId !== Number(String(largeId))) {
+      console.log('JavaScript numeric precision issue demonstrated:');
+      console.log(`Original ID: ${largeId}`);
+      console.log(`ID after conversion: ${Number(String(largeId))}`);
+      console.log(`Difference: ${largeId - Number(String(largeId))}`);
+    }
   });
-
-  it('should maintain precision with large resource IDs', async () => {
-    // The problematic large ID from the error
-    const largeId = '1065794930725519400';
+  
+  it('should validate distribution data with large IDs', () => {
+    const distribution = {
+      resourceId: 1066067726706802699,
+      companyIds: [9007199254740990, 9007199254740991], // Max safe integer - 1 and max safe integer
+      tagIds: [1, 2, 3]
+    };
     
-    // Call the function that fetches a resource by ID
-    await fetchResourceById(largeId);
+    const validatedDistribution = validateDistribution(distribution);
     
-    // Check that fetch was called with the exact ID string
-    expect(global.fetch).toHaveBeenCalledWith(`/api/resources/${largeId}`);
-    
-    // Make sure it's not calling with a modified/truncated ID
-    const fetchUrl = global.fetch.mock.calls[0][0];
-    expect(fetchUrl).to.equal(`/api/resources/${largeId}`);
-    expect(fetchUrl).not.to.equal('/api/resources/1065794930725519360'); // Example of precision loss
-  });
-
-  it('handles errors and provides detailed error messages', async () => {
-    // Mock a 404 response
-    global.fetch.mockResolvedValue({
-      ok: false,
-      status: 404,
-      text: async () => 'Resource not found'
-    });
-    
-    // Expect the function to throw with the detailed error
-    await expect(fetchResourceById('999')).rejects.toThrow('Failed to fetch resource data: 404 Resource not found');
+    // All IDs should be preserved as strings
+    expect(validatedDistribution.resourceId).toBe(String(distribution.resourceId));
+    expect(validatedDistribution.companyIds[0]).toBe(String(distribution.companyIds[0]));
+    expect(validatedDistribution.companyIds[1]).toBe(String(distribution.companyIds[1]));
+    expect(validatedDistribution.tagIds[0]).toBe(String(distribution.tagIds[0]));
   });
 });

@@ -22,6 +22,9 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Either company IDs or tag IDs must be provided' });
     }
     
+    // Convert IDs to strings to preserve precision
+    const resourceIdStr = String(resourceId);
+    
     // Prepare distribution records
     const distributions = [];
     
@@ -29,8 +32,8 @@ export default async function handler(req, res) {
     if (companyIds && companyIds.length > 0) {
       companyIds.forEach(companyId => {
         distributions.push({
-          resourceId,
-          companyId,
+          resourceId: resourceIdStr,
+          companyId: String(companyId),
           dateSent: new Date(),
           clicks: 0,
           updatedAt: new Date(),
@@ -42,33 +45,37 @@ export default async function handler(req, res) {
     if (tagIds && tagIds.length > 0) {
       // For each tag, get all companies with that tag
       for (const tagId of tagIds) {
+        const tagIdStr = String(tagId);
         const companiesWithTag = await db
           .select({ companyId: companyTags.companyId })
           .from(companyTags)
-          .where(eq(companyTags.tagId, tagId));
+          .where(eq(companyTags.tagId, tagIdStr));
         
         // Add a distribution for each company with this tag
         companiesWithTag.forEach(({ companyId }) => {
+          const companyIdStr = String(companyId);
           // Check if this company is already in the distributions list
           const existingDistIndex = distributions.findIndex(d => 
-            d.resourceId === resourceId && d.companyId === companyId);
+            d.resourceId === resourceIdStr && d.companyId === companyIdStr);
           
           if (existingDistIndex === -1) {
             distributions.push({
-              resourceId,
-              companyId,
-              tagId,
+              resourceId: resourceIdStr,
+              companyId: companyIdStr,
+              tagId: tagIdStr,
               dateSent: new Date(),
               clicks: 0,
               updatedAt: new Date(),
             });
           } else {
             // Company already in list, add the tag ID
-            distributions[existingDistIndex].tagId = tagId;
+            distributions[existingDistIndex].tagId = tagIdStr;
           }
         });
       }
     }
+    
+    console.log(`Inserting ${distributions.length} resource distributions`);
     
     // Insert all distribution records
     const results = await db
@@ -81,6 +88,7 @@ export default async function handler(req, res) {
       distributions: results
     });
   } catch (error) {
+    console.error("Resource distribution error:", error.message);
     return handleApiError(error, res, {
       endpoint: '/api/resources/distribute',
       body: req.body

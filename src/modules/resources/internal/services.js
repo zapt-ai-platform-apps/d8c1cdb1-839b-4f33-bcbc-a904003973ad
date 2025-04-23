@@ -231,11 +231,23 @@ export const updateResource = async (id, resourceData) => {
  */
 export const distributeResource = async (resourceId, companyIds = [], tagIds = []) => {
   try {
+    // Ensure all IDs are strings to preserve precision
+    const resourceIdStr = String(resourceId);
+    const companyIdsStr = companyIds.map(id => String(id));
+    const tagIdsStr = tagIds.map(id => String(id));
+    
     const distributionData = {
-      resourceId,
-      companyIds,
-      tagIds
+      resourceId: resourceIdStr,
+      companyIds: companyIdsStr,
+      tagIds: tagIdsStr
     };
+    
+    // Log the distribution request with string IDs
+    console.log('Distributing resource with data:', {
+      resourceId: resourceIdStr,
+      companyIds: companyIdsStr,
+      tagIds: tagIdsStr
+    });
     
     // Validate data before sending
     validateDistribution(distributionData, {
@@ -264,9 +276,9 @@ export const distributeResource = async (resourceId, companyIds = [], tagIds = [
     
     // Publish event for distribution
     eventBus.publish(events.RESOURCE_DISTRIBUTED, { 
-      resourceId,
-      companyIds,
-      tagIds,
+      resourceId: resourceIdStr,
+      companyIds: companyIdsStr,
+      tagIds: tagIdsStr,
       result: data
     });
     
