@@ -134,13 +134,18 @@ export const createEngagement = async (engagementData, followUps = []) => {
     // Log the incoming company ID
     console.log(`Creating engagement for companyId: ${engagementData.companyId} (type: ${typeof engagementData.companyId})`);
     
-    // Ensure companyId is a number
-    const companyId = Number(engagementData.companyId);
+    if (!engagementData.companyId) {
+      throw new Error('Company ID is required to create an engagement');
+    }
+    
+    // Keep companyId as a string to preserve precision for large integers
+    // This prevents JavaScript number precision issues with large IDs
+    const companyId = String(engagementData.companyId);
     
     // Prepare data for API: Convert date and AI tools
     const preparedData = {
       ...engagementData,
-      companyId: companyId, // Ensure it's a number
+      companyId, // Keep as string to preserve precision
       dateOfContact: engagementData.dateOfContact instanceof Date 
         ? engagementData.dateOfContact.toISOString().split('T')[0] 
         : engagementData.dateOfContact,
@@ -149,8 +154,8 @@ export const createEngagement = async (engagementData, followUps = []) => {
         : engagementData.aiTrainingDelivered
     };
     
-    // Log the prepared data
-    console.log('Prepared engagement data:', JSON.stringify(preparedData));
+    // Log the prepared data with explicit company ID
+    console.log('Prepared engagement data with companyId:', preparedData.companyId);
     
     // Validate data before sending
     validateEngagement({
@@ -233,13 +238,13 @@ export const createEngagement = async (engagementData, followUps = []) => {
  */
 export const updateEngagement = async (engagementId, engagementData, followUps = []) => {
   try {
-    // Ensure companyId is a number
-    const companyId = Number(engagementData.companyId);
+    // Keep companyId as a string to preserve precision for large integers
+    const companyId = String(engagementData.companyId);
     
     // Prepare data for API: Convert date and AI tools
     const preparedData = {
       ...engagementData,
-      companyId: companyId, // Ensure it's a number
+      companyId, // Keep as string to preserve precision
       dateOfContact: engagementData.dateOfContact instanceof Date 
         ? engagementData.dateOfContact.toISOString().split('T')[0] 
         : engagementData.dateOfContact,

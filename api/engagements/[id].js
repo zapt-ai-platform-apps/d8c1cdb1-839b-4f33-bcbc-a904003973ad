@@ -1,95 +1,111 @@
-import { engagements, followUpActions } from '../../drizzle/schema.js';
-import { getDB, handleApiError } from '../_apiUtils.js';
+import { getDB, authenticateUser, handleApiError, Sentry } from '../_apiUtils.js';
 import { eq } from 'drizzle-orm';
 
 export default async function handler(req, res) {
-  const { id } = req.query;
-  console.log(`[API] ${req.method} /api/engagements/${id}`);
-  
-  if (!id || isNaN(Number(id))) {
-    return res.status(400).json({ error: 'Invalid engagement ID' });
-  }
-  
-  const engagementId = Number(id);
-  const db = getDB();
-  
   try {
-    // GET - retrieve engagement with follow-ups
+    await authenticateUser(req);
+    const db = getDB();
+    const { id } = req.query;
+    
+    if (!id) {
+      return res.status(400).json({ error: 'Engagement ID is required' });
+    }
+    
+    // Log the engagement ID being accessed
+    console.log(`API: Accessing engagement with ID: ${id}`);
+
     if (req.method === 'GET') {
       const engagement = await db.query.engagements.findFirst({
-        where: eq(engagements.id, engagementId)
+        where: eq(db.query.engagements.id, id),
+        with: {
+          followUpActions: true
+        }
       });
       
       if (!engagement) {
         return res.status(404).json({ error: 'Engagement not found' });
       }
       
-      // Get follow-up actions
-      const followUps = await db
-        .select()
-        .from(followUpActions)
-        .where(eq(followUpActions.engagementId, engagementId));
-      
-      return res.status(200).json({
-        ...engagement,
-        followUps
-      });
-    }
-    
-    // PUT - update engagement
+      return res.status(200).json(engagement);
+    } 
     else if (req.method === 'PUT') {
-      const { engagement, followUps = [] } = req.body;
+      const { engagement, followUps } = req.body;
       
-      const [updatedEngagement] = await db
-        .update(engagements)
+      // Log company ID for debugging precision issues
+      console.log(`API: Updating engagement with company ID: ${engagement.companyId} (${typeof engagement.companyId})`);
+      
+      // Check if company exists first
+      const company = await db.query.companies.findFirst({
+        where: eq(db.query.companies.id, engagement.companyId)
+      });
+      
+      if (!company) {
+        console.error(`Company with ID ${engagement.companyId} not found`);
+        return res.status(404).json({ 
+          error: `Company with ID ${engagement.companyId} does not exist` 
+        });
+      }
+      
+      // Update engagement
+      const [updatedEngagement] = await db.update(db.query.engagements)
         .set({
+          companyId: engagement.companyId,
           dateOfContact: engagement.dateOfContact,
           aiTrainingDelivered: engagement.aiTrainingDelivered,
           notes: engagement.notes,
           status: engagement.status,
-          updatedAt: new Date(),
+          updatedAt: new Date()
         })
-        .where(eq(engagements.id, engagementId))
+        .where(eq(db.query.engagements.id, id))
         .returning();
       
-      // Delete existing follow-ups and add new ones
-      await db
-        .delete(followUpActions)
-        .where(eq(followUpActions.engagementId, engagementId));
+      if (!updatedEngagement) {
+        return res.status(404).json({ error: 'Engagement not found' });
+      }
       
-      if (followUps.length > 0) {
+      // Delete existing follow-ups
+      await db.delete(db.query.followUpActions)
+        .where(eq(db.query.followUpActions.engagementId, id));
+      
+      // Create new follow-ups
+      if (followUps && followUps.length > 0) {
         const followUpValues = followUps.map(followUp => ({
-          engagementId: engagementId,
+          engagementId: id,
           task: followUp.task,
           dueDate: followUp.dueDate,
-          completed: followUp.completed || false,
-          updatedAt: new Date(),
+          completed: followUp.completed || false
         }));
         
-        await db.insert(followUpActions).values(followUpValues);
+        const followUpResults = await db.insert(db.query.followUpActions)
+          .values(followUpValues)
+          .returning();
+          
+        updatedEngagement.followUpActions = followUpResults;
+      } else {
+        updatedEngagement.followUpActions = [];
       }
       
       return res.status(200).json(updatedEngagement);
-    }
-    
-    // DELETE - delete engagement
+    } 
     else if (req.method === 'DELETE') {
-      await db
-        .delete(engagements)
-        .where(eq(engagements.id, engagementId));
+      // Deleting engagement will cascade delete follow-ups due to DB constraint
+      const [deletedEngagement] = await db.delete(db.query.engagements)
+        .where(eq(db.query.engagements.id, id))
+        .returning();
       
-      return res.status(204).send();
+      if (!deletedEngagement) {
+        return res.status(404).json({ error: 'Engagement not found' });
+      }
+      
+      return res.status(200).json({ message: 'Engagement deleted successfully' });
     }
     
-    // Unsupported method
-    else {
-      return res.status(405).json({ error: 'Method not allowed' });
-    }
+    return res.status(405).json({ error: 'Method not allowed' });
   } catch (error) {
-    return handleApiError(error, res, {
+    return handleApiError(error, res, { 
+      endpoint: `api/engagements/${req.query.id}`,
       method: req.method,
-      endpoint: `/api/engagements/${id}`,
-      body: req.body
+      engagementId: req.query.id
     });
   }
 }
