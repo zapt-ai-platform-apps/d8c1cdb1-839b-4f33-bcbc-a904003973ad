@@ -7,6 +7,8 @@ import formidable from 'formidable';
 import { v4 as uuidv4 } from 'uuid';
 import * as cloudinary from 'cloudinary';
 import { Readable } from 'stream';
+import fs from 'fs';
+import path from 'path';
 
 // Initialize Sentry
 Sentry.init({
@@ -27,6 +29,21 @@ cloudinary.v2.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
+// Validate Cloudinary config
+const validateCloudinaryConfig = () => {
+  const requiredVars = [
+    'CLOUDINARY_CLOUD_NAME',
+    'CLOUDINARY_API_KEY',
+    'CLOUDINARY_API_SECRET'
+  ];
+  
+  const missingVars = requiredVars.filter(name => !process.env[name]);
+  
+  if (missingVars.length) {
+    throw new Error(`Missing Cloudinary environment variables: ${missingVars.join(', ')}`);
+  }
+};
+
 // Export config to disable bodyParser for file uploads
 export const config = {
   api: {
@@ -46,48 +63,70 @@ const bufferToStream = (buffer) => {
 // Helper function to parse form data with formidable
 const parseForm = async (req) => {
   return new Promise((resolve, reject) => {
-    // Configure formidable to keep files in memory
+    // Create a temporary directory for files
+    const tmpDir = path.join('/tmp', uuidv4());
+    try {
+      fs.mkdirSync(tmpDir, { recursive: true });
+    } catch (err) {
+      console.error('Error creating temp directory:', err);
+      return reject(new Error('Failed to create temporary directory for file upload'));
+    }
+    
+    // Configure formidable to save files to disk first
     const form = formidable({
       maxFileSize: 20 * 1024 * 1024, // 20MB in bytes
       keepExtensions: true,
       multiples: true,
-      // This is the key change - ensure files are kept in memory
-      fileWriteStreamHandler: () => {
-        let fileData = Buffer.alloc(0);
-        return {
-          write: (chunk) => {
-            fileData = Buffer.concat([fileData, chunk]);
-            return true;
-          },
-          end: () => {},
-          data: () => fileData,
-        };
-      }
+      uploadDir: tmpDir
     });
     
     form.parse(req, (err, fields, files) => {
-      if (err) return reject(err);
-      resolve({ fields, files });
+      if (err) {
+        console.error('Formidable parse error:', err);
+        // Cleanup temp files
+        try {
+          if (fs.existsSync(tmpDir)) {
+            fs.rmSync(tmpDir, { recursive: true, force: true });
+          }
+        } catch (cleanupErr) {
+          console.error('Error cleaning up temp files:', cleanupErr);
+        }
+        return reject(err);
+      }
+      
+      resolve({ fields, files, tmpDir });
     });
   });
 };
 
-// Function to upload file to Cloudinary using buffer
-const uploadToCloudinary = (fileBuffer, fileType) => {
-  return new Promise((resolve, reject) => {
-    const uploadStream = cloudinary.v2.uploader.upload_stream(
-      {
-        resource_type: 'auto', // auto-detect file type
-        folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV}`
-      },
-      (error, result) => {
-        if (error) reject(error);
-        else resolve(result);
-      }
-    );
+// Function to upload file to Cloudinary using path
+const uploadToCloudinary = async (filePath, fileType) => {
+  console.log(`Uploading file from path: ${filePath}, type: ${fileType}`);
+  
+  try {
+    const result = await new Promise((resolve, reject) => {
+      cloudinary.v2.uploader.upload(
+        filePath,
+        {
+          resource_type: 'auto', // auto-detect file type
+          folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV}`
+        },
+        (error, result) => {
+          if (error) {
+            console.error('Cloudinary upload error:', error);
+            reject(error);
+          } else {
+            resolve(result);
+          }
+        }
+      );
+    });
     
-    bufferToStream(fileBuffer).pipe(uploadStream);
-  });
+    return result;
+  } catch (error) {
+    console.error('Error in uploadToCloudinary:', error);
+    throw error;
+  }
 };
 
 export default async function handler(req, res) {
@@ -96,8 +135,13 @@ export default async function handler(req, res) {
   // Connect to the database
   const client = postgres(process.env.COCKROACH_DB_URL);
   const db = drizzle(client);
+  
+  let tmpDir = null;
 
   try {
+    // Validate Cloudinary configuration
+    validateCloudinaryConfig();
+    
     // Handle different HTTP methods
     if (req.method === 'GET') {
       // Get list of files, optionally filtered by companyId
@@ -115,7 +159,8 @@ export default async function handler(req, res) {
     } 
     else if (req.method === 'POST') {
       // Parse the form data
-      const { fields, files: uploadedFiles } = await parseForm(req);
+      const { fields, files: uploadedFiles, tmpDir: tempDir } = await parseForm(req);
+      tmpDir = tempDir;
       
       console.log('Received file upload request with fields:', fields);
       
@@ -128,7 +173,8 @@ export default async function handler(req, res) {
       console.log('File details:', {
         name: file.originalFilename,
         type: file.mimetype,
-        size: file.size
+        size: file.size,
+        filepath: file.filepath
       });
       
       // Extract companyId if provided
@@ -159,17 +205,8 @@ export default async function handler(req, res) {
       try {
         console.log('Uploading file to Cloudinary...');
         
-        // Get the file buffer from the custom stream handler
-        const fileBuffer = file.toJSON ? file.toJSON().data : file._writeStream?.data();
-        
-        if (!fileBuffer) {
-          throw new Error('No file data found in the uploaded file');
-        }
-        
-        console.log(`Got file buffer with size: ${fileBuffer.length} bytes`);
-        
-        // Upload file to Cloudinary using the buffer
-        const result = await uploadToCloudinary(fileBuffer, file.mimetype);
+        // Upload file to Cloudinary using the file path
+        const result = await uploadToCloudinary(file.filepath, file.mimetype);
         
         console.log('Cloudinary upload successful:', result.secure_url);
         
@@ -221,6 +258,17 @@ export default async function handler(req, res) {
     });
     return res.status(500).json({ error: 'Internal Server Error', message: error.message });
   } finally {
+    // Clean up temporary directory if it exists
+    if (tmpDir) {
+      try {
+        if (fs.existsSync(tmpDir)) {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      } catch (cleanupErr) {
+        console.error('Error cleaning up temp files:', cleanupErr);
+      }
+    }
+    
     await client.end();
   }
 }
