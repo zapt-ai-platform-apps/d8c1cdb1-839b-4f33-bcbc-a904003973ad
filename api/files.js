@@ -6,7 +6,6 @@ import * as Sentry from '@sentry/node';
 import formidable from 'formidable';
 import { v4 as uuidv4 } from 'uuid';
 import * as cloudinary from 'cloudinary';
-import { Readable } from 'stream';
 import fs from 'fs';
 import path from 'path';
 
@@ -46,6 +45,7 @@ const validateCloudinaryConfig = () => {
   }
   
   console.log('Cloudinary configuration validated successfully');
+  return true;
 };
 
 // Export config to disable bodyParser for file uploads
@@ -66,6 +66,8 @@ const parseForm = async (req) => {
       console.error('Error creating temp directory:', err);
       return reject(new Error('Failed to create temporary directory for file upload'));
     }
+    
+    console.log(`Created temp directory: ${tmpDir}`);
     
     // Configure formidable to save files to disk first
     const form = formidable({
@@ -96,12 +98,14 @@ const parseForm = async (req) => {
       // Log the parsed form data for debugging
       console.log('Parsed form fields:', fields);
       console.log('Parsed files:', Object.keys(files));
+      
       if (files.file) {
+        const fileDetails = Array.isArray(files.file) ? files.file[0] : files.file;
         console.log('File details:', {
-          name: files.file.originalFilename,
-          path: files.file.filepath,
-          type: files.file.mimetype,
-          size: files.file.size
+          name: fileDetails.originalFilename,
+          path: fileDetails.filepath,
+          type: fileDetails.mimetype,
+          size: fileDetails.size
         });
       } else {
         console.error('No file found in form data with key "file"');
@@ -112,7 +116,7 @@ const parseForm = async (req) => {
   });
 };
 
-// Function to upload file to Cloudinary
+// Function to upload file to Cloudinary with better error handling
 const uploadToCloudinary = async (filePath, fileType) => {
   console.log(`Uploading file from path: ${filePath}, type: ${fileType}`);
   
@@ -122,15 +126,29 @@ const uploadToCloudinary = async (filePath, fileType) => {
     throw new Error(`File not found at path: ${filePath}`);
   }
   
+  // Get file size for logging
+  const stats = fs.statSync(filePath);
+  console.log(`File size: ${stats.size} bytes`);
+  
   try {
     console.log('Starting Cloudinary upload...');
-    const result = await new Promise((resolve, reject) => {
+    
+    // Verify Cloudinary is properly configured before uploading
+    validateCloudinaryConfig();
+    
+    return new Promise((resolve, reject) => {
+      const uploadOptions = {
+        resource_type: 'auto', // auto-detect file type
+        folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV || 'dev'}`,
+        use_filename: true,
+        unique_filename: true
+      };
+      
+      console.log('Cloudinary upload options:', uploadOptions);
+      
       cloudinary.v2.uploader.upload(
         filePath,
-        {
-          resource_type: 'auto', // auto-detect file type
-          folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV || 'dev'}`
-        },
+        uploadOptions,
         (error, result) => {
           if (error) {
             console.error('Cloudinary upload error:', error);
@@ -142,8 +160,6 @@ const uploadToCloudinary = async (filePath, fileType) => {
         }
       );
     });
-    
-    return result;
   } catch (error) {
     console.error('Error in uploadToCloudinary:', error);
     throw error;
@@ -209,7 +225,7 @@ export default async function handler(req, res) {
         });
       }
       
-      const file = uploadedFiles.file;
+      const file = Array.isArray(uploadedFiles.file) ? uploadedFiles.file[0] : uploadedFiles.file;
       console.log('File received:', {
         name: file.originalFilename,
         type: file.mimetype,
@@ -278,9 +294,12 @@ export default async function handler(req, res) {
             uploadOption: fields.uploadOption
           }
         });
+        
+        // Return a more detailed error message
         return res.status(500).json({ 
           error: 'Failed to upload file to cloud storage',
-          details: cloudinaryError.message
+          details: cloudinaryError.message || 'Unknown Cloudinary error occurred',
+          suggestion: 'Please check Cloudinary configuration variables and credentials'
         });
       }
     } 
@@ -303,6 +322,7 @@ export default async function handler(req, res) {
       try {
         if (fs.existsSync(tmpDir)) {
           fs.rmSync(tmpDir, { recursive: true, force: true });
+          console.log(`Cleaned up temp directory: ${tmpDir}`);
         }
       } catch (cleanupErr) {
         console.error('Error cleaning up temp files:', cleanupErr);

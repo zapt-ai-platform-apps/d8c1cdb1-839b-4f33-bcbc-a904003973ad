@@ -23,6 +23,7 @@ const ResourceForm = () => {
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadOption, setUploadOption] = useState('link'); // Default to link option
   const [cloudinaryStatus, setCloudinaryStatus] = useState(null);
+  const [attemptedUpload, setAttemptedUpload] = useState(false);
   
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -116,6 +117,8 @@ const ResourceForm = () => {
     if (option === 'link') {
       setFile(null);
       setUploadFileName('');
+      setUploadError(null);
+      setAttemptedUpload(false);
     }
     
     // Focus the file input when switching to file option
@@ -129,11 +132,12 @@ const ResourceForm = () => {
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
-      console.log('File selected:', selectedFile.name);
+      console.log('File selected:', selectedFile.name, 'size:', selectedFile.size, 'type:', selectedFile.type);
       setFile(selectedFile);
       setUploadFileName(selectedFile.name);
       setUploadError(null);
       setUploadOption('file');
+      setAttemptedUpload(false);
     }
   };
   
@@ -149,6 +153,7 @@ const ResourceForm = () => {
     try {
       setFileUploading(true);
       setUploadError(null);
+      setAttemptedUpload(true);
       
       console.log('Preparing to upload file:', file.name, 'type:', file.type, 'size:', file.size);
       const formData = new FormData();
@@ -171,13 +176,22 @@ const ResourceForm = () => {
           const contentType = response.headers.get('content-type');
           if (contentType && contentType.includes('application/json')) {
             const errorData = await response.json();
+            console.error('Upload error response:', errorData);
+            
             errorMessage = errorData.error || errorData.message || errorMessage;
             console.error('File upload error details:', errorData.details || 'No details provided');
             
             // Check for Cloudinary configuration errors
-            if (errorMessage.includes('Cloudinary') || (errorData.details && errorData.details.includes('Cloudinary'))) {
+            if (errorMessage.includes('Cloudinary') || 
+                (errorData.details && errorData.details.includes('Cloudinary')) ||
+                errorMessage.includes('not properly configured')) {
               setCloudinaryStatus('error');
-              errorMessage = 'The file upload service is not properly configured. Please contact your administrator.';
+              errorMessage = 'The file upload service is not properly configured. Please contact your administrator or use the link option instead.';
+            }
+            
+            // Include any suggestions from the backend
+            if (errorData.suggestion) {
+              errorMessage += ` ${errorData.suggestion}`;
             }
           } else {
             const errorText = await response.text();
@@ -235,7 +249,7 @@ const ResourceForm = () => {
           // Check if file upload failed and exit if so
           if (!uploadedFile) {
             console.error('File upload failed or was canceled');
-            setError('File upload failed. Please check the error message and try again.');
+            setError('File upload failed. Please check the error message and try again or use the link option instead.');
             setSaving(false);
             return; // Exit early if file upload failed
           }
@@ -307,7 +321,7 @@ const ResourceForm = () => {
         </div>
       )}
       
-      {cloudinaryStatus === 'error' && (
+      {(cloudinaryStatus === 'error' || (attemptedUpload && uploadError)) && (
         <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded">
           <p className="font-medium">File Upload Configuration Issue</p>
           <p>The file upload service (Cloudinary) is not properly configured. Please contact your administrator to set up the required environment variables:</p>
@@ -317,6 +331,14 @@ const ResourceForm = () => {
             <li>CLOUDINARY_API_SECRET</li>
           </ul>
           <p className="mt-2">You can still create resources with links instead of file uploads.</p>
+          {uploadOption === 'file' && (
+            <button 
+              onClick={() => handleOptionChange('link')}
+              className="mt-2 text-blue-600 underline cursor-pointer"
+            >
+              Switch to link mode
+            </button>
+          )}
         </div>
       )}
       
@@ -443,10 +465,10 @@ const ResourceForm = () => {
                         </div>
                       )}
                       
-                      {cloudinaryStatus === 'error' && (
+                      {(cloudinaryStatus === 'error' || attemptedUpload && uploadError) && (
                         <div className="text-yellow-600 text-sm mt-1">
-                          <p>Note: File uploads are currently unavailable due to a configuration issue.</p>
-                          <p>Please use the "Add Link" option instead.</p>
+                          <p>Note: File uploads are currently unavailable.</p>
+                          <p>Please consider using the "Add Link" option instead.</p>
                         </div>
                       )}
                     </div>
