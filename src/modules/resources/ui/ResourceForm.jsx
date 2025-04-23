@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api as resourcesApi } from '../api';
-import { api as tagsApi } from '../../tags/api';
-import { PageHeader } from '../../core'; // Fixed import path
+import { PageHeader } from '../../core';
 import { LoadingSpinner } from '../../core';
-import Select from 'react-select';
 import { eventBus } from '../../core/events';
 import { events as resourceEvents } from '../events';
 import * as Sentry from '@sentry/browser';
@@ -24,6 +22,7 @@ const ResourceForm = () => {
   const [fileUploading, setFileUploading] = useState(false);
   const [uploadFileName, setUploadFileName] = useState('');
   const [uploadOption, setUploadOption] = useState('link'); // Default to link option
+  const [cloudinaryStatus, setCloudinaryStatus] = useState(null);
   
   const fileInputRef = useRef(null);
   const navigate = useNavigate();
@@ -70,6 +69,40 @@ const ResourceForm = () => {
       fetchResourceData();
     }
   }, [id, isEditing]);
+  
+  // Check Cloudinary configuration on mount
+  useEffect(() => {
+    const checkCloudinaryConfig = async () => {
+      if (uploadOption === 'file') {
+        try {
+          // Make a simple request to verify Cloudinary configuration
+          const response = await fetch('/api/files', {
+            method: 'GET',
+            headers: {
+              'Accept': 'application/json',
+            },
+          });
+          
+          // If the request is successful, we'll assume Cloudinary is configured
+          if (response.ok) {
+            setCloudinaryStatus('ready');
+          } else {
+            // Try to get detailed error information
+            const data = await response.json();
+            if (data.error && data.error.includes('Cloudinary')) {
+              setCloudinaryStatus('error');
+              setUploadError('File upload service is not properly configured. Please contact your administrator.');
+            }
+          }
+        } catch (error) {
+          console.error('Error checking Cloudinary configuration:', error);
+          // Don't set an error message yet since the user might not upload a file
+        }
+      }
+    };
+    
+    checkCloudinaryConfig();
+  }, [uploadOption]);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -121,10 +154,15 @@ const ResourceForm = () => {
       const formData = new FormData();
       formData.append('file', file);
       
+      // Log the FormData to verify it contains the file
+      console.log('FormData created with file attached');
+      
       const response = await fetch('/api/files', {
         method: 'POST',
         body: formData,
       });
+      
+      console.log('Upload response status:', response.status);
       
       if (!response.ok) {
         let errorMessage = 'Failed to upload file. Please try again later.';
@@ -135,6 +173,12 @@ const ResourceForm = () => {
             const errorData = await response.json();
             errorMessage = errorData.error || errorData.message || errorMessage;
             console.error('File upload error details:', errorData.details || 'No details provided');
+            
+            // Check for Cloudinary configuration errors
+            if (errorMessage.includes('Cloudinary') || (errorData.details && errorData.details.includes('Cloudinary'))) {
+              setCloudinaryStatus('error');
+              errorMessage = 'The file upload service is not properly configured. Please contact your administrator.';
+            }
           } else {
             const errorText = await response.text();
             console.error('Non-JSON error response:', errorText);
@@ -178,30 +222,49 @@ const ResourceForm = () => {
       let resourceData = { ...resource };
       
       // If file option is selected and we have a file
-      if (uploadOption === 'file' && file) {
-        console.log('Uploading file before saving resource');
-        const uploadedFile = await uploadFile();
-        
-        // Check if file upload failed and exit if so
-        if (!uploadedFile) {
-          console.error('File upload failed or was canceled');
-          setError('File upload failed. Please check the error message and try again.');
+      if (uploadOption === 'file') {
+        // If we're editing and the file hasn't changed, we don't need to upload again
+        if (isEditing && !file && resource.fileName) {
+          console.log('Using existing file for resource');
+        } 
+        // Otherwise we need to upload the new file
+        else if (file) {
+          console.log('Uploading file before saving resource');
+          const uploadedFile = await uploadFile();
+          
+          // Check if file upload failed and exit if so
+          if (!uploadedFile) {
+            console.error('File upload failed or was canceled');
+            setError('File upload failed. Please check the error message and try again.');
+            setSaving(false);
+            return; // Exit early if file upload failed
+          }
+          
+          // Use the file's URL for the resource link
+          resourceData.link = uploadedFile.url;
+          
+          // Store file metadata
+          resourceData.fileName = uploadedFile.name;
+          resourceData.fileType = uploadedFile.type;
+          resourceData.fileSize = file.size;
+        } else {
+          // We're in file mode but no file is selected
+          setError('Please select a file to upload or switch to link mode.');
           setSaving(false);
-          return; // Exit early if file upload failed
+          return;
         }
-        
-        // Use the file's URL for the resource link
-        resourceData.link = uploadedFile.url;
-        
-        // Store file metadata
-        resourceData.fileName = uploadedFile.name;
-        resourceData.fileType = uploadedFile.type;
-        resourceData.fileSize = file.size;
       } else if (uploadOption === 'link') {
         // Clear file metadata when using a link
         resourceData.fileName = null;
         resourceData.fileType = null;
         resourceData.fileSize = null;
+        
+        // Make sure we have a link
+        if (!resourceData.link) {
+          setError('Please enter a link or upload a file.');
+          setSaving(false);
+          return;
+        }
       }
       
       console.log('Saving resource with data:', resourceData);
@@ -241,6 +304,19 @@ const ResourceForm = () => {
       {error && (
         <div className="mb-6 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
           {error}
+        </div>
+      )}
+      
+      {cloudinaryStatus === 'error' && (
+        <div className="mb-6 bg-yellow-50 border border-yellow-200 text-yellow-700 px-4 py-3 rounded">
+          <p className="font-medium">File Upload Configuration Issue</p>
+          <p>The file upload service (Cloudinary) is not properly configured. Please contact your administrator to set up the required environment variables:</p>
+          <ul className="list-disc ml-5 mt-2">
+            <li>CLOUDINARY_CLOUD_NAME</li>
+            <li>CLOUDINARY_API_KEY</li>
+            <li>CLOUDINARY_API_SECRET</li>
+          </ul>
+          <p className="mt-2">You can still create resources with links instead of file uploads.</p>
         </div>
       )}
       
@@ -364,6 +440,13 @@ const ResourceForm = () => {
                       {file && !fileUploading && !uploadError && (
                         <div className="text-green-600 text-sm mt-1">
                           File selected: {file.name}
+                        </div>
+                      )}
+                      
+                      {cloudinaryStatus === 'error' && (
+                        <div className="text-yellow-600 text-sm mt-1">
+                          <p>Note: File uploads are currently unavailable due to a configuration issue.</p>
+                          <p>Please use the "Add Link" option instead.</p>
                         </div>
                       )}
                     </div>

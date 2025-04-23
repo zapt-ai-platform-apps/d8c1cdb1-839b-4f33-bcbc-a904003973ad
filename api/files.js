@@ -29,20 +29,23 @@ cloudinary.v2.config({
   api_secret: process.env.CLOUDINARY_API_SECRET
 });
 
-// Validate Cloudinary config
+// Validate Cloudinary config - improved validation
 const validateCloudinaryConfig = () => {
   const requiredVars = [
-    'CLOUDINARY_CLOUD_NAME',
-    'CLOUDINARY_API_KEY',
-    'CLOUDINARY_API_SECRET'
+    { name: 'CLOUDINARY_CLOUD_NAME', value: process.env.CLOUDINARY_CLOUD_NAME },
+    { name: 'CLOUDINARY_API_KEY', value: process.env.CLOUDINARY_API_KEY },
+    { name: 'CLOUDINARY_API_SECRET', value: process.env.CLOUDINARY_API_SECRET }
   ];
   
-  const missingVars = requiredVars.filter(name => !process.env[name]);
+  const missingVars = requiredVars.filter(v => !v.value || v.value.trim() === '');
   
   if (missingVars.length) {
-    console.error(`Missing Cloudinary environment variables: ${missingVars.join(', ')}`);
-    throw new Error(`Missing Cloudinary environment variables: ${missingVars.join(', ')}`);
+    const missingNames = missingVars.map(v => v.name);
+    console.error(`Missing or empty Cloudinary environment variables: ${missingNames.join(', ')}`);
+    throw new Error(`Missing or empty Cloudinary environment variables: ${missingNames.join(', ')}`);
   }
+  
+  console.log('Cloudinary configuration validated successfully');
 };
 
 // Export config to disable bodyParser for file uploads
@@ -50,15 +53,6 @@ export const config = {
   api: {
     bodyParser: false,
   },
-};
-
-// Helper function to convert buffer to stream
-const bufferToStream = (buffer) => {
-  const readable = new Readable();
-  readable._read = () => {}; // _read is required but you can noop it
-  readable.push(buffer);
-  readable.push(null);
-  return readable;
 };
 
 // Helper function to parse form data with formidable
@@ -78,7 +72,11 @@ const parseForm = async (req) => {
       maxFileSize: 20 * 1024 * 1024, // 20MB in bytes
       keepExtensions: true,
       multiples: true,
-      uploadDir: tmpDir
+      uploadDir: tmpDir,
+      filename: (name, ext, part) => {
+        // Keep original filename with extensions
+        return `${part.originalFilename}`;
+      }
     });
     
     form.parse(req, (err, fields, files) => {
@@ -95,28 +93,50 @@ const parseForm = async (req) => {
         return reject(err);
       }
       
+      // Log the parsed form data for debugging
+      console.log('Parsed form fields:', fields);
+      console.log('Parsed files:', Object.keys(files));
+      if (files.file) {
+        console.log('File details:', {
+          name: files.file.originalFilename,
+          path: files.file.filepath,
+          type: files.file.mimetype,
+          size: files.file.size
+        });
+      } else {
+        console.error('No file found in form data with key "file"');
+      }
+      
       resolve({ fields, files, tmpDir });
     });
   });
 };
 
-// Function to upload file to Cloudinary using path
+// Function to upload file to Cloudinary
 const uploadToCloudinary = async (filePath, fileType) => {
   console.log(`Uploading file from path: ${filePath}, type: ${fileType}`);
   
+  // Verify file exists at the path
+  if (!fs.existsSync(filePath)) {
+    console.error(`File not found at path: ${filePath}`);
+    throw new Error(`File not found at path: ${filePath}`);
+  }
+  
   try {
+    console.log('Starting Cloudinary upload...');
     const result = await new Promise((resolve, reject) => {
       cloudinary.v2.uploader.upload(
         filePath,
         {
           resource_type: 'auto', // auto-detect file type
-          folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV}`
+          folder: `gmfeip-crm/${process.env.VITE_PUBLIC_APP_ENV || 'dev'}`
         },
         (error, result) => {
           if (error) {
             console.error('Cloudinary upload error:', error);
             reject(error);
           } else {
+            console.log('Cloudinary upload success:', result.secure_url);
             resolve(result);
           }
         }
@@ -174,6 +194,7 @@ export default async function handler(req, res) {
         });
       }
       
+      console.log('Parsing form data...');
       // Parse the form data
       const { fields, files: uploadedFiles, tmpDir: tempDir } = await parseForm(req);
       tmpDir = tempDir;
@@ -181,12 +202,15 @@ export default async function handler(req, res) {
       console.log('Received file upload request with fields:', fields);
       
       if (!uploadedFiles.file) {
-        console.error('No file found in upload request');
-        return res.status(400).json({ error: 'No file uploaded' });
+        console.error('No file found in upload request with key "file"');
+        return res.status(400).json({ 
+          error: 'Missing required parameter – file',
+          message: 'No file was found in the upload request. Ensure you are sending a file with the key "file".'
+        });
       }
       
       const file = uploadedFiles.file;
-      console.log('File details:', {
+      console.log('File received:', {
         name: file.originalFilename,
         type: file.mimetype,
         size: file.size,
