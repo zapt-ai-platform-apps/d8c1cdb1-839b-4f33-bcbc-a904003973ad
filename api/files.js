@@ -40,6 +40,7 @@ const validateCloudinaryConfig = () => {
   const missingVars = requiredVars.filter(name => !process.env[name]);
   
   if (missingVars.length) {
+    console.error(`Missing Cloudinary environment variables: ${missingVars.join(', ')}`);
     throw new Error(`Missing Cloudinary environment variables: ${missingVars.join(', ')}`);
   }
 };
@@ -139,9 +140,6 @@ export default async function handler(req, res) {
   let tmpDir = null;
 
   try {
-    // Validate Cloudinary configuration
-    validateCloudinaryConfig();
-    
     // Handle different HTTP methods
     if (req.method === 'GET') {
       // Get list of files, optionally filtered by companyId
@@ -158,6 +156,24 @@ export default async function handler(req, res) {
       return res.status(200).json(result);
     } 
     else if (req.method === 'POST') {
+      // Validate Cloudinary config before proceeding
+      try {
+        validateCloudinaryConfig();
+      } catch (configError) {
+        console.error('Cloudinary configuration error:', configError.message);
+        Sentry.captureException(configError, {
+          extra: {
+            route: '/api/files',
+            method: req.method,
+            action: 'upload validation'
+          }
+        });
+        return res.status(500).json({ 
+          error: 'The file upload service is not properly configured. Please contact your administrator.',
+          details: configError.message
+        });
+      }
+      
       // Parse the form data
       const { fields, files: uploadedFiles, tmpDir: tempDir } = await parseForm(req);
       tmpDir = tempDir;

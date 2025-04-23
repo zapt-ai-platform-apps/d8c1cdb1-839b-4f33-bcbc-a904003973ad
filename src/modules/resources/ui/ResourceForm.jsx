@@ -127,9 +127,23 @@ const ResourceForm = () => {
       });
       
       if (!response.ok) {
-        const errorData = await response.text();
-        console.error('File upload failed:', response.status, errorData);
-        throw new Error(`Failed to upload file (Status: ${response.status})`);
+        let errorMessage = 'Failed to upload file. Please try again later.';
+        
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            const errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || errorMessage;
+            console.error('File upload error details:', errorData.details || 'No details provided');
+          } else {
+            const errorText = await response.text();
+            console.error('Non-JSON error response:', errorText);
+          }
+        } catch (parseError) {
+          console.error('Error parsing error response:', parseError);
+        }
+        
+        throw new Error(errorMessage);
       }
       
       const uploadedFile = await response.json();
