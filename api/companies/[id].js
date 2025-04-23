@@ -22,16 +22,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Company ID is required' });
     }
     
+    // Always keep the original string representation of the ID
+    const originalIdString = String(rawId);
+    
     // Handle potential BigInt IDs (for IDs like 1065784524843483100)
     let companyId;
     try {
-      // First try to handle as a regular number
-      companyId = Number(rawId);
+      // First check if it can be safely represented as a number
+      const numericId = Number(rawId);
       
-      // If it results in a non-safe integer or NaN, use BigInt as a fallback
-      if (!Number.isSafeInteger(companyId) || isNaN(companyId)) {
+      // If it results in a non-safe integer or NaN, use BigInt for database operations
+      if (!Number.isSafeInteger(numericId) || isNaN(numericId)) {
         console.log('ID is not a safe integer, using BigInt:', rawId);
         companyId = BigInt(rawId);
+      } else {
+        companyId = numericId;
       }
     } catch (error) {
       console.error(`Invalid company ID format: ${rawId}`, error);
@@ -51,7 +56,7 @@ export default async function handler(req, res) {
       });
       
       if (!company) {
-        console.log(`Company not found: ${companyId}`);
+        console.log(`Company not found: ${originalIdString} (${typeof companyId}: ${companyId})`);
         return res.status(404).json({ error: 'Company not found' });
       }
       
@@ -93,13 +98,27 @@ export default async function handler(req, res) {
         files: companyFiles
       };
       
-      console.log(`Successfully retrieved company data for ID: ${companyId}`);
+      console.log(`Successfully retrieved company data for ID: ${originalIdString}`);
       return res.status(200).json(fullCompanyData);
     } 
     
     // PUT - update company
     else if (req.method === 'PUT') {
+      console.log(`Processing PUT request for company: ${originalIdString}`);
+      
       const { company, tagIds = [] } = req.body;
+      
+      console.log(`Received tag IDs:`, tagIds);
+      
+      // Convert tagIds to appropriate format for database
+      const processedTagIds = tagIds.map(tagId => {
+        // If it's not a safe integer, use BigInt
+        const numericTagId = Number(tagId);
+        if (!Number.isSafeInteger(numericTagId) || isNaN(numericTagId)) {
+          return BigInt(tagId);
+        }
+        return numericTagId;
+      });
       
       // Update company details
       const [updatedCompany] = await db
@@ -130,8 +149,8 @@ export default async function handler(req, res) {
         .delete(companyTags)
         .where(eq(companyTags.companyId, companyId));
       
-      if (tagIds.length > 0) {
-        const tagValues = tagIds.map(tagId => ({
+      if (processedTagIds.length > 0) {
+        const tagValues = processedTagIds.map(tagId => ({
           companyId: companyId,
           tagId: tagId,
         }));
@@ -139,7 +158,7 @@ export default async function handler(req, res) {
         await db.insert(companyTags).values(tagValues);
       }
       
-      console.log(`Successfully updated company ID: ${companyId}`);
+      console.log(`Successfully updated company ID: ${originalIdString}`);
       return res.status(200).json(updatedCompany);
     } 
     
@@ -149,7 +168,7 @@ export default async function handler(req, res) {
         .delete(companies)
         .where(eq(companies.id, companyId));
       
-      console.log(`Successfully deleted company ID: ${companyId}`);
+      console.log(`Successfully deleted company ID: ${originalIdString}`);
       return res.status(204).send();
     } 
     
@@ -161,7 +180,7 @@ export default async function handler(req, res) {
   } catch (error) {
     return handleApiError(error, res, {
       method: req.method,
-      endpoint: `/api/companies/${req.query?.id}`,
+      endpoint: `/api/companies/${req.query?.id || req.url.split('/').pop()}`,
       url: req.url,
       body: req.body
     });

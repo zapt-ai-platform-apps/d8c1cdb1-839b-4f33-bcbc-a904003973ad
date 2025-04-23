@@ -1,11 +1,13 @@
 import { supabase } from '@/shared/services/supabaseClient';
 import * as Sentry from '@sentry/browser';
+import { safeStringId, safeStringIds } from './utilities';
 
 export async function fetchCompanyById(id) {
   try {
-    console.log(`Fetching company with ID: ${id}`);
+    const safeId = safeStringId(id);
+    console.log(`Fetching company with ID: ${safeId}`);
     
-    const response = await fetch(`/api/companies/${id}`, {
+    const response = await fetch(`/api/companies/${safeId}`, {
       headers: {
         'Accept': 'application/json',
         'Content-Type': 'application/json'
@@ -148,6 +150,9 @@ export async function createCompany(companyData, selectedTagIds) {
     // Ensure proper serialization of array data
     const preparedData = prepareCompanyDataForAPI(companyData);
     
+    // Make sure tag IDs are safely handled
+    const safeTagIds = safeStringIds(selectedTagIds);
+    
     const response = await fetch('/api/companies', {
       method: 'POST',
       headers: {
@@ -156,12 +161,13 @@ export async function createCompany(companyData, selectedTagIds) {
       },
       body: JSON.stringify({
         company: preparedData,
-        tagIds: selectedTagIds,
+        tagIds: safeTagIds,
       }),
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to create company: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to create company: ${response.status} ${response.statusText || errorText}`);
     }
     
     return await response.json();
@@ -178,10 +184,17 @@ export async function updateCompany(id, companyData, selectedTagIds) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
     
+    // Use safeStringId to ensure the ID doesn't lose precision
+    const safeId = safeStringId(id);
+    console.log(`Updating company with ID: ${safeId}`);
+    
     // Ensure proper serialization of array data
     const preparedData = prepareCompanyDataForAPI(companyData);
     
-    const response = await fetch(`/api/companies/${id}`, {
+    // Make sure tag IDs are safely handled
+    const safeTagIds = safeStringIds(selectedTagIds);
+    
+    const response = await fetch(`/api/companies/${safeId}`, {
       method: 'PUT',
       headers: {
         Authorization: `Bearer ${session?.access_token}`,
@@ -190,19 +203,28 @@ export async function updateCompany(id, companyData, selectedTagIds) {
       },
       body: JSON.stringify({
         company: preparedData,
-        tagIds: selectedTagIds,
+        tagIds: safeTagIds,
       }),
     });
     
+    // Log the response status and headers for debugging
+    console.log(`Update response status: ${response.status}`, {
+      headers: {
+        contentType: response.headers.get('content-type'),
+      }
+    });
+    
     if (!response.ok) {
-      throw new Error(`Failed to update company: ${response.statusText}`);
+      const errorText = await response.text();
+      console.error(`Update failed with status ${response.status}:`, errorText);
+      throw new Error(`Failed to update company: ${response.status} ${response.statusText || errorText}`);
     }
     
     return await response.json();
   } catch (error) {
     console.error('Error updating company:', error);
     Sentry.captureException(error, {
-      extra: { id, company: companyData, tags: selectedTagIds, action: 'updateCompany' }
+      extra: { id, safeId: safeStringId(id), company: companyData, tags: selectedTagIds, action: 'updateCompany' }
     });
     throw error;
   }
@@ -211,7 +233,11 @@ export async function updateCompany(id, companyData, selectedTagIds) {
 export async function deleteCompany(id) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
-    const response = await fetch(`/api/companies/${id}`, {
+    
+    // Use safeStringId to ensure the ID doesn't lose precision
+    const safeId = safeStringId(id);
+    
+    const response = await fetch(`/api/companies/${safeId}`, {
       method: 'DELETE',
       headers: {
         Authorization: `Bearer ${session?.access_token}`,
@@ -220,14 +246,15 @@ export async function deleteCompany(id) {
     });
     
     if (!response.ok) {
-      throw new Error(`Failed to delete company: ${response.statusText}`);
+      const errorText = await response.text();
+      throw new Error(`Failed to delete company: ${response.status} ${response.statusText || errorText}`);
     }
     
     return true;
   } catch (error) {
     console.error('Error deleting company:', error);
     Sentry.captureException(error, {
-      extra: { id, action: 'deleteCompany' }
+      extra: { id, safeId: safeStringId(id), action: 'deleteCompany' }
     });
     throw error;
   }
