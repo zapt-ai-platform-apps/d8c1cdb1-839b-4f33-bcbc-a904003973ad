@@ -1,340 +1,231 @@
-import React, { useState, useEffect } from 'react';
-import DatePicker from "react-datepicker";
+import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
-import { TrashIcon } from '@heroicons/react/24/outline';
 import { api as engagementsApi } from '../api';
 import * as Sentry from '@sentry/browser';
 
-const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) => {
-  const isEditing = !!engagement;
-  
-  const [formData, setFormData] = useState({
-    dateOfContact: engagement?.dateOfContact ? new Date(engagement.dateOfContact) : new Date(),
-    aiTrainingDelivered: [],
-    notes: engagement?.notes || '',
-    status: engagement?.status || 'Initial Contact',
-    followUps: []
-  });
-  
-  const [submitting, setSubmitting] = useState(false);
+const EngagementForm = ({ companyId, onEngagementCreated }) => {
+  const [dateOfContact, setDateOfContact] = useState(new Date());
+  const [aiTrainingDelivered, setAiTrainingDelivered] = useState('');
+  const [notes, setNotes] = useState('');
+  const [status, setStatus] = useState('In Progress');
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState(null);
+  const [followUps, setFollowUps] = useState([
+    { task: '', dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), completed: false }
+  ]);
   
-  // Parse AI training tools on component mount
-  useEffect(() => {
-    if (engagement?.aiTrainingDelivered) {
-      const tools = engagementsApi.getAITools(engagement.aiTrainingDelivered);
-      setFormData(prev => ({ ...prev, aiTrainingDelivered: tools }));
-    }
-  }, [engagement]);
+  const navigate = useNavigate();
   
-  // Fetch follow-up actions if editing
-  useEffect(() => {
-    if (isEditing) {
-      const fetchFollowUps = async () => {
-        try {
-          const data = await engagementsApi.getEngagementById(engagement.id);
-          
-          if (data.followUps) {
-            setFormData(prev => ({
-              ...prev,
-              followUps: data.followUps.map(followUp => ({
-                ...followUp,
-                dueDate: followUp.dueDate ? new Date(followUp.dueDate) : null
-              }))
-            }));
-          }
-        } catch (error) {
-          console.error("Error fetching follow-ups:", error);
-          Sentry.captureException(error, {
-            extra: {
-              component: 'EngagementForm',
-              action: 'fetchFollowUps',
-              engagementId: engagement.id
-            }
-          });
-        }
-      };
-      
-      fetchFollowUps();
-    }
-  }, [isEditing, engagement]);
-  
-  const aiTools = [
-    "Gamma",
-    "Synthesia",
-    "ChatGPT",
-    "Newarc",
-    "Custom GPTs"
-  ];
-  
-  const statusOptions = [
-    "Initial Contact",
-    "In Progress",
-    "Follow-Up Needed",
-    "Completed"
-  ];
-  
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const handleFollowUpChange = (index, field, value) => {
+    const updatedFollowUps = [...followUps];
+    updatedFollowUps[index] = { ...updatedFollowUps[index], [field]: value };
+    setFollowUps(updatedFollowUps);
   };
   
-  const handleDateChange = (date) => {
-    setFormData(prev => ({ ...prev, dateOfContact: date }));
-  };
-  
-  const handleToolToggle = (tool) => {
-    setFormData(prev => {
-      if (prev.aiTrainingDelivered.includes(tool)) {
-        return {
-          ...prev,
-          aiTrainingDelivered: prev.aiTrainingDelivered.filter(t => t !== tool)
-        };
-      } else {
-        return {
-          ...prev,
-          aiTrainingDelivered: [...prev.aiTrainingDelivered, tool]
-        };
-      }
-    });
-  };
-  
-  // Follow-up actions management
   const addFollowUp = () => {
-    setFormData(prev => ({
-      ...prev,
-      followUps: [
-        ...prev.followUps,
-        {
-          task: '',
-          dueDate: new Date(),
-          completed: false
-        }
-      ]
-    }));
+    setFollowUps([
+      ...followUps,
+      { task: '', dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), completed: false }
+    ]);
   };
   
   const removeFollowUp = (index) => {
-    setFormData(prev => ({
-      ...prev,
-      followUps: prev.followUps.filter((_, i) => i !== index)
-    }));
-  };
-  
-  const updateFollowUp = (index, field, value) => {
-    setFormData(prev => {
-      const updatedFollowUps = [...prev.followUps];
-      updatedFollowUps[index] = {
-        ...updatedFollowUps[index],
-        [field]: value
-      };
-      return { ...prev, followUps: updatedFollowUps };
-    });
+    const updatedFollowUps = followUps.filter((_, i) => i !== index);
+    setFollowUps(updatedFollowUps);
   };
   
   const handleSubmit = async (e) => {
     e.preventDefault();
     
+    if (isSubmitting) return;
+    
+    // Clear previous error
+    setError(null);
+    
+    // Validate form
+    const filteredFollowUps = followUps.filter(f => f.task.trim() !== '');
+    if (filteredFollowUps.length === 0) {
+      setError('Please add at least one follow-up action');
+      return;
+    }
+    
+    // Format the engagement data
+    const engagement = {
+      companyId,
+      dateOfContact: dateOfContact.toISOString().split('T')[0],
+      aiTrainingDelivered,
+      notes,
+      status
+    };
+    
+    // Format follow-ups data
+    const formattedFollowUps = filteredFollowUps.map(followUp => ({
+      task: followUp.task,
+      dueDate: followUp.dueDate ? followUp.dueDate.toISOString().split('T')[0] : null,
+      completed: followUp.completed
+    }));
+    
+    setIsSubmitting(true);
+    
     try {
-      setSubmitting(true);
-      setError(null);
+      console.log('Submitting engagement with company ID:', companyId);
+      const result = await engagementsApi.createEngagement(engagement, formattedFollowUps);
       
-      // We will now pass the companyId directly without any manual parsing
-      // The validation schema will handle the conversion with z.coerce.number()
-      console.log(`Submitting engagement with companyId: ${companyId} (type: ${typeof companyId})`);
-      
-      if (!companyId) {
-        throw new Error(`Invalid company ID: Company ID is required`);
+      if (onEngagementCreated) {
+        onEngagementCreated(result);
       }
       
-      const engagementData = {
-        companyId,  // Pass directly - validator will handle coercion
-        dateOfContact: formData.dateOfContact,
-        aiTrainingDelivered: formData.aiTrainingDelivered,
-        notes: formData.notes,
-        status: formData.status
-      };
-      
-      let result;
-      if (isEditing) {
-        result = await engagementsApi.updateEngagement(
-          engagement.id, 
-          engagementData, 
-          formData.followUps
-        );
-      } else {
-        result = await engagementsApi.createEngagement(
-          engagementData, 
-          formData.followUps
-        );
-      }
-      
-      if (onSuccess) onSuccess(result);
+      // Reset form
+      setDateOfContact(new Date());
+      setAiTrainingDelivered('');
+      setNotes('');
+      setStatus('In Progress');
+      setFollowUps([
+        { task: '', dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), completed: false }
+      ]);
     } catch (error) {
-      console.error(`Error ${isEditing ? 'updating' : 'adding'} engagement:`, error);
-      setError(error.message);
+      console.error('Failed to create engagement:', error);
       Sentry.captureException(error, {
         extra: {
-          component: 'EngagementForm',
-          action: isEditing ? 'updateEngagement' : 'addEngagement',
-          formData,
-          companyId
+          engagement,
+          followUps: formattedFollowUps,
+          location: 'EngagementForm.handleSubmit'
         }
       });
+      setError(error.message || 'Failed to create engagement. Please try again.');
     } finally {
-      setSubmitting(false);
+      setIsSubmitting(false);
     }
   };
   
   return (
-    <div className="bg-white border border-gray-200 rounded-lg p-6">
-      <h3 className="text-lg font-medium text-gray-900 mb-4">
-        {isEditing ? 'Edit Engagement' : 'Add New Engagement'}
-      </h3>
+    <div className="bg-white shadow-md rounded-lg p-6">
+      <h2 className="text-xl font-semibold mb-4">Log New Engagement</h2>
       
       {error && (
-        <div className="mb-4 bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded">
-          <p>{error}</p>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded mb-4">
+          {error}
         </div>
       )}
       
       <form onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-6">
-          <div className="sm:col-span-3">
-            <label htmlFor="dateOfContact" className="form-label">Date of Contact</label>
-            <DatePicker
-              selected={formData.dateOfContact}
-              onChange={handleDateChange}
-              className="form-input w-full box-border"
-              dateFormat="dd/MM/yyyy"
-              placeholderText="Select date"
-            />
-          </div>
-          
-          <div className="sm:col-span-3">
-            <label htmlFor="status" className="form-label">Status</label>
-            <select
-              id="status"
-              name="status"
-              value={formData.status}
-              onChange={handleChange}
-              className="form-select"
-            >
-              {statusOptions.map(option => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
-          </div>
-          
-          <div className="sm:col-span-6">
-            <label className="form-label">AI Training Delivered</label>
-            <div className="mt-1 flex flex-wrap gap-3">
-              {aiTools.map(tool => (
-                <label key={tool} className="flex items-center">
-                  <input
-                    type="checkbox"
-                    checked={formData.aiTrainingDelivered.includes(tool)}
-                    onChange={() => handleToolToggle(tool)}
-                    className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                  />
-                  <span className="ml-2 text-sm text-gray-700">{tool}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          
-          <div className="sm:col-span-6">
-            <label htmlFor="notes" className="form-label">Notes</label>
-            <textarea
-              id="notes"
-              name="notes"
-              rows={4}
-              value={formData.notes}
-              onChange={handleChange}
-              className="form-textarea box-border"
-              placeholder="Details about the engagement..."
-            />
-          </div>
-          
-          <div className="sm:col-span-6 border-t border-gray-200 pt-4">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-md font-medium text-gray-900">Follow-Up Actions</h4>
-              <button
-                type="button"
-                onClick={addFollowUp}
-                className="text-sm text-blue-600 hover:text-blue-800 cursor-pointer"
-              >
-                + Add Action
-              </button>
-            </div>
-            
-            {formData.followUps.length === 0 ? (
-              <p className="text-sm text-gray-500">No follow-up actions added</p>
-            ) : (
-              <div className="space-y-4">
-                {formData.followUps.map((followUp, index) => (
-                  <div key={index} className="grid grid-cols-12 gap-3 items-start border border-gray-200 rounded-md p-3">
-                    <div className="col-span-6">
-                      <label className="text-xs text-gray-500">Task</label>
-                      <input
-                        type="text"
-                        value={followUp.task}
-                        onChange={(e) => updateFollowUp(index, 'task', e.target.value)}
-                        className="form-input mt-1 box-border"
-                        placeholder="Action item..."
-                      />
-                    </div>
-                    <div className="col-span-3">
-                      <label className="text-xs text-gray-500">Due Date</label>
-                      <DatePicker
-                        selected={followUp.dueDate}
-                        onChange={(date) => updateFollowUp(index, 'dueDate', date)}
-                        className="form-input mt-1 w-full box-border"
-                        dateFormat="dd/MM/yyyy"
-                        placeholderText="Due date"
-                      />
-                    </div>
-                    <div className="col-span-2 pt-6">
-                      <label className="flex items-center">
-                        <input
-                          type="checkbox"
-                          checked={followUp.completed}
-                          onChange={(e) => updateFollowUp(index, 'completed', e.target.checked)}
-                          className="h-4 w-4 text-blue-600 border-gray-300 rounded"
-                        />
-                        <span className="ml-2 text-sm text-gray-700">Completed</span>
-                      </label>
-                    </div>
-                    <div className="col-span-1 pt-6">
-                      <button
-                        type="button"
-                        onClick={() => removeFollowUp(index)}
-                        className="text-red-500 hover:text-red-700 cursor-pointer"
-                      >
-                        <TrashIcon className="h-5 w-5" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-2">Date of Contact</label>
+          <DatePicker
+            selected={dateOfContact}
+            onChange={date => setDateOfContact(date)}
+            className="box-border border border-gray-300 rounded p-2 w-full"
+          />
         </div>
         
-        <div className="mt-6 flex justify-end gap-3">
-          <button
-            type="button"
-            onClick={onCancel}
-            className="btn-outline"
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-2">AI Training Delivered</label>
+          <textarea
+            value={aiTrainingDelivered}
+            onChange={(e) => setAiTrainingDelivered(e.target.value)}
+            className="box-border border border-gray-300 rounded p-2 w-full"
+            rows="3"
+            placeholder="What AI training was delivered?"
+          />
+        </div>
+        
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-2">Notes</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            className="box-border border border-gray-300 rounded p-2 w-full"
+            rows="3"
+            placeholder="Additional notes about the engagement"
+          />
+        </div>
+        
+        <div className="mb-4">
+          <label className="block text-gray-700 font-medium mb-2">Status</label>
+          <select
+            value={status}
+            onChange={(e) => setStatus(e.target.value)}
+            className="box-border border border-gray-300 rounded p-2 w-full"
           >
-            Cancel
-          </button>
+            <option value="In Progress">In Progress</option>
+            <option value="Completed">Completed</option>
+            <option value="Follow-up Required">Follow-up Required</option>
+            <option value="Deferred">Deferred</option>
+          </select>
+        </div>
+        
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-gray-700 font-medium">Follow-up Actions</label>
+            <button
+              type="button"
+              onClick={addFollowUp}
+              className="text-blue-600 hover:text-blue-800 text-sm"
+            >
+              + Add Another
+            </button>
+          </div>
+          
+          {followUps.map((followUp, index) => (
+            <div key={index} className="flex gap-2 mb-2 items-start">
+              <div className="flex-grow">
+                <input
+                  type="text"
+                  value={followUp.task}
+                  onChange={(e) => handleFollowUpChange(index, 'task', e.target.value)}
+                  className="box-border border border-gray-300 rounded p-2 w-full mb-2"
+                  placeholder="Action required"
+                />
+                <div className="flex gap-4">
+                  <div className="flex-grow">
+                    <label className="block text-sm text-gray-600 mb-1">Due Date</label>
+                    <DatePicker
+                      selected={followUp.dueDate}
+                      onChange={(date) => handleFollowUpChange(index, 'dueDate', date)}
+                      className="box-border border border-gray-300 rounded p-2 w-full"
+                    />
+                  </div>
+                  <div className="flex items-center pt-6">
+                    <input
+                      type="checkbox"
+                      checked={followUp.completed}
+                      onChange={(e) => handleFollowUpChange(index, 'completed', e.target.checked)}
+                      className="mr-2"
+                    />
+                    <label className="text-sm text-gray-600">Completed</label>
+                  </div>
+                </div>
+              </div>
+              {followUps.length > 1 && (
+                <button
+                  type="button"
+                  onClick={() => removeFollowUp(index)}
+                  className="text-red-500 hover:text-red-700 mt-2"
+                >
+                  &times;
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+        
+        <div className="flex justify-end">
           <button
             type="submit"
-            disabled={submitting}
-            className="btn-primary cursor-pointer"
+            disabled={isSubmitting}
+            className="bg-blue-600 text-white py-2 px-4 rounded hover:bg-blue-700 cursor-pointer flex items-center"
           >
-            {submitting ? 'Saving...' : 'Save'}
+            {isSubmitting ? (
+              <>
+                <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                </svg>
+                Saving...
+              </>
+            ) : 'Save Engagement'}
           </button>
         </div>
       </form>
