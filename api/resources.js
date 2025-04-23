@@ -1,7 +1,6 @@
 import { drizzle } from 'drizzle-orm/postgres-js';
 import postgres from 'postgres';
 import { resources } from '../drizzle/schema.js';
-import { eq, desc } from 'drizzle-orm';
 import * as Sentry from '@sentry/node';
 
 // Initialize Sentry
@@ -26,30 +25,52 @@ export default async function handler(req, res) {
   try {
     // Handle different HTTP methods
     if (req.method === 'GET') {
-      const result = await db.select().from(resources).orderBy(desc(resources.createdAt));
+      // Get all resources
+      const result = await db.select().from(resources).orderBy(resources.createdAt);
+      
       return res.status(200).json(result);
     } 
     else if (req.method === 'POST') {
-      console.log('Creating new resource with data:', req.body);
+      console.log('Creating resource with data:', req.body);
       
-      // Create a new resource
-      const { title, type, description, link, fileName, fileType, fileSize } = req.body;
+      // Extract resource data - check if it's nested or direct
+      const resourceData = req.body.resource || req.body;
       
       // Validate required fields
+      const { title, type, link } = resourceData;
+      
       if (!title || !type || !link) {
-        return res.status(400).json({ error: 'Missing required fields' });
+        return res.status(400).json({ 
+          error: 'Missing required fields',
+          details: {
+            title: title ? 'provided' : 'missing',
+            type: type ? 'provided' : 'missing',
+            link: link ? 'provided' : 'missing'
+          }
+        });
       }
       
-      // Insert the new resource
-      const result = await db.insert(resources).values({
+      // Extract all fields with proper defaults
+      const insertData = {
         title,
         type,
-        description,
+        description: resourceData.description || null,
         link,
-        fileName,
-        fileType,
-        fileSize: fileSize ? parseInt(fileSize, 10) : null
-      }).returning();
+        fileName: resourceData.fileName || null,
+        fileType: resourceData.fileType || null,
+        fileSize: resourceData.fileSize ? parseInt(resourceData.fileSize, 10) : null,
+        createdAt: new Date(),
+        updatedAt: new Date()
+      };
+      
+      console.log('Inserting resource with data:', insertData);
+      
+      // Insert the resource
+      const result = await db.insert(resources).values(insertData).returning();
+      
+      if (!result || result.length === 0) {
+        throw new Error('Failed to insert resource into database');
+      }
       
       console.log('Resource created successfully:', result[0]);
       
@@ -69,6 +90,9 @@ export default async function handler(req, res) {
     });
     return res.status(500).json({ error: 'Internal Server Error', message: error.message });
   } finally {
-    await client.end();
+    // Ensure client is defined before trying to end it
+    if (typeof client !== 'undefined') {
+      await client.end();
+    }
   }
 }

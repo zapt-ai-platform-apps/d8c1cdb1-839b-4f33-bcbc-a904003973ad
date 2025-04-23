@@ -53,10 +53,13 @@ export const fetchResourceById = async (id) => {
   try {
     console.log(`Fetching resource data for ID: ${id}`);
     
+    // Use the ID as-is without parsing to preserve precision
     const response = await fetch(`/api/resources/${id}`);
     
     if (!response.ok) {
-      throw new Error('Failed to fetch resource data');
+      const errorText = await response.text();
+      console.error(`API error (${response.status}):`, errorText);
+      throw new Error(`Failed to fetch resource data: ${response.status} ${errorText}`);
     }
     
     const data = await response.json();
@@ -108,18 +111,21 @@ export const createResource = async (resourceData) => {
       moduleTo: 'api'
     });
     
+    console.log('Sending resource data to API:', processedData);
+    
+    // Send the data directly without nesting it under 'resource'
     const response = await fetch('/api/resources', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        resource: processedData
-      })
+      body: JSON.stringify(processedData)
     });
     
     if (!response.ok) {
-      throw new Error('Failed to create resource');
+      const errorText = await response.text();
+      console.error(`API error (${response.status}):`, errorText);
+      throw new Error(`Failed to create resource: ${response.status} ${errorText}`);
     }
     
     const data = await response.json();
@@ -177,18 +183,19 @@ export const updateResource = async (id, resourceData) => {
       moduleTo: 'api'
     });
     
+    // Send the data directly without nesting it under 'resource'
     const response = await fetch(`/api/resources/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({
-        resource: processedData
-      })
+      body: JSON.stringify(processedData)
     });
     
     if (!response.ok) {
-      throw new Error('Failed to update resource');
+      const errorText = await response.text();
+      console.error(`API error (${response.status}):`, errorText);
+      throw new Error(`Failed to update resource: ${response.status} ${errorText}`);
     }
     
     const data = await response.json();
@@ -248,7 +255,9 @@ export const distributeResource = async (resourceId, companyIds = [], tagIds = [
     });
     
     if (!response.ok) {
-      throw new Error('Failed to distribute resource');
+      const errorText = await response.text();
+      console.error(`API error (${response.status}):`, errorText);
+      throw new Error(`Failed to distribute resource: ${response.status} ${errorText}`);
     }
     
     const data = await response.json();
