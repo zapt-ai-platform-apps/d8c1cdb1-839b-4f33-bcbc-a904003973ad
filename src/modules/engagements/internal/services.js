@@ -138,14 +138,12 @@ export const createEngagement = async (engagementData, followUps = []) => {
       throw new Error('Company ID is required to create an engagement');
     }
     
-    // Keep companyId as a string to preserve precision for large integers
-    // This prevents JavaScript number precision issues with large IDs
-    const companyId = String(engagementData.companyId);
+    // We'll keep companyId as is now - the validator will coerce it to a number
+    // No need to convert to string as our validator can handle string values
     
     // Prepare data for API: Convert date and AI tools
     const preparedData = {
       ...engagementData,
-      companyId, // Keep as string to preserve precision
       dateOfContact: engagementData.dateOfContact instanceof Date 
         ? engagementData.dateOfContact.toISOString().split('T')[0] 
         : engagementData.dateOfContact,
@@ -154,8 +152,8 @@ export const createEngagement = async (engagementData, followUps = []) => {
         : engagementData.aiTrainingDelivered
     };
     
-    // Log the prepared data with explicit company ID
-    console.log('Prepared engagement data with companyId:', preparedData.companyId);
+    // Log the prepared data
+    console.log('Prepared engagement data with companyId:', preparedData.companyId, 'type:', typeof preparedData.companyId);
     
     // Validate data before sending
     validateEngagement({
@@ -238,13 +236,12 @@ export const createEngagement = async (engagementData, followUps = []) => {
  */
 export const updateEngagement = async (engagementId, engagementData, followUps = []) => {
   try {
-    // Keep companyId as a string to preserve precision for large integers
-    const companyId = String(engagementData.companyId);
+    // We'll keep companyId as is now - the validator will coerce it to a number
+    // No need to convert to string as our validator can handle string values
     
     // Prepare data for API: Convert date and AI tools
     const preparedData = {
       ...engagementData,
-      companyId, // Keep as string to preserve precision
       dateOfContact: engagementData.dateOfContact instanceof Date 
         ? engagementData.dateOfContact.toISOString().split('T')[0] 
         : engagementData.dateOfContact,

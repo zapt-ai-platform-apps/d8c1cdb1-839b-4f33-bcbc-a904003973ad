@@ -15,7 +15,7 @@ export const followUpSchema = z.object({
 // Define schema for a single engagement
 export const engagementSchema = z.object({
   id: z.number().optional(),
-  companyId: z.number(),
+  companyId: z.coerce.number(), // Changed from z.number() to handle string values
   dateOfContact: z.string().or(z.instanceof(Date)),
   aiTrainingDelivered: z.string().or(z.array(z.string())).optional(),
   notes: z.string().optional().default(''),

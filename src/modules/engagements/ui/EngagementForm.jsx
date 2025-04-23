@@ -137,19 +137,18 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
     
     try {
       setSubmitting(true);
+      setError(null);
       
-      // Ensure companyId is a number, not a string or BigInt
-      const parsedCompanyId = Number(companyId);
+      // We will now pass the companyId directly without any manual parsing
+      // The validation schema will handle the conversion with z.coerce.number()
+      console.log(`Submitting engagement with companyId: ${companyId} (type: ${typeof companyId})`);
       
-      // Log the companyId to help with debugging
-      console.log(`Submitting engagement with companyId: ${companyId} (type: ${typeof companyId}), parsed: ${parsedCompanyId} (type: ${typeof parsedCompanyId})`);
-      
-      if (isNaN(parsedCompanyId)) {
-        throw new Error(`Invalid company ID: ${companyId}. Must be a valid number.`);
+      if (!companyId) {
+        throw new Error(`Invalid company ID: Company ID is required`);
       }
       
       const engagementData = {
-        companyId: parsedCompanyId,
+        companyId,  // Pass directly - validator will handle coercion
         dateOfContact: formData.dateOfContact,
         aiTrainingDelivered: formData.aiTrainingDelivered,
         notes: formData.notes,
@@ -179,10 +178,10 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
           component: 'EngagementForm',
           action: isEditing ? 'updateEngagement' : 'addEngagement',
           formData,
-          companyId,
-          parsedCompanyId: Number(companyId)
+          companyId
         }
       });
+    } finally {
       setSubmitting(false);
     }
   };
