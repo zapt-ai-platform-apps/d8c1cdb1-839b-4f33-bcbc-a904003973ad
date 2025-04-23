@@ -13,10 +13,26 @@ import * as Sentry from '@sentry/browser';
 export const parseJsonSafely = (jsonString, defaultValue = []) => {
   if (!jsonString) return defaultValue;
   
+  // If it's already the right type, return it
+  if (Array.isArray(jsonString) && Array.isArray(defaultValue)) {
+    return jsonString;
+  }
+  
+  // If it's not a string, or is "[object Object]", return default
+  if (typeof jsonString !== 'string' || jsonString === "[object Object]") {
+    return defaultValue;
+  }
+  
   try {
-    return JSON.parse(jsonString);
+    // Check if it looks like JSON
+    if (jsonString.trim().startsWith('[') || jsonString.trim().startsWith('{')) {
+      return JSON.parse(jsonString);
+    } else {
+      // Fallback to comma-separated values
+      return jsonString.split(',').map(item => item.trim()).filter(Boolean);
+    }
   } catch (error) {
-    console.error('Error parsing JSON:', error);
+    console.error('Error parsing JSON:', error, `Value: "${jsonString}"`);
     Sentry.captureException(error, {
       extra: {
         action: 'parseJsonSafely',
@@ -26,7 +42,7 @@ export const parseJsonSafely = (jsonString, defaultValue = []) => {
     
     // For arrays, try fallback to comma-separated values
     if (Array.isArray(defaultValue)) {
-      return jsonString.split(',').map(item => item.trim());
+      return jsonString.split(',').map(item => item.trim()).filter(Boolean);
     }
     
     return defaultValue;
@@ -115,9 +131,16 @@ export const fetchEngagementById = async (engagementId) => {
  */
 export const createEngagement = async (engagementData, followUps = []) => {
   try {
+    // Log the incoming company ID
+    console.log(`Creating engagement for companyId: ${engagementData.companyId} (type: ${typeof engagementData.companyId})`);
+    
+    // Ensure companyId is a number
+    const companyId = Number(engagementData.companyId);
+    
     // Prepare data for API: Convert date and AI tools
     const preparedData = {
       ...engagementData,
+      companyId: companyId, // Ensure it's a number
       dateOfContact: engagementData.dateOfContact instanceof Date 
         ? engagementData.dateOfContact.toISOString().split('T')[0] 
         : engagementData.dateOfContact,
@@ -125,6 +148,9 @@ export const createEngagement = async (engagementData, followUps = []) => {
         ? JSON.stringify(engagementData.aiTrainingDelivered) 
         : engagementData.aiTrainingDelivered
     };
+    
+    // Log the prepared data
+    console.log('Prepared engagement data:', JSON.stringify(preparedData));
     
     // Validate data before sending
     validateEngagement({
@@ -169,7 +195,9 @@ export const createEngagement = async (engagementData, followUps = []) => {
     });
     
     if (!response.ok) {
-      throw new Error('Failed to create engagement');
+      const errorText = await response.text();
+      console.error('Server response error:', errorText);
+      throw new Error(`Failed to create engagement: ${errorText}`);
     }
     
     const data = await response.json();
@@ -205,9 +233,13 @@ export const createEngagement = async (engagementData, followUps = []) => {
  */
 export const updateEngagement = async (engagementId, engagementData, followUps = []) => {
   try {
+    // Ensure companyId is a number
+    const companyId = Number(engagementData.companyId);
+    
     // Prepare data for API: Convert date and AI tools
     const preparedData = {
       ...engagementData,
+      companyId: companyId, // Ensure it's a number
       dateOfContact: engagementData.dateOfContact instanceof Date 
         ? engagementData.dateOfContact.toISOString().split('T')[0] 
         : engagementData.dateOfContact,

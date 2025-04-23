@@ -79,6 +79,11 @@ const CompanyForm = () => {
           // Convert parsed data to react-select format
           const aiToolsMapped = aiToolsDelivered.map(tool => ({ value: tool, label: tool }));
           const signUpsMapped = additionalSignUps.map(signUp => ({ value: signUp, label: signUp }));
+          const resourcesMapped = Array.isArray(resourcesSent) 
+            ? resourcesSent.map(resource => typeof resource === 'string' 
+                ? { value: resource, label: resource } 
+                : resource)
+            : [];
           
           setFormData({
             name: data.name || '',
@@ -95,7 +100,7 @@ const CompanyForm = () => {
             additionalSignUps: signUpsMapped,
             valueToCollege: data.valueToCollege || '',
             engagementNotes: data.engagementNotes || '',
-            resourcesSent: resourcesSent.map(resource => ({ value: resource, label: resource })),
+            resourcesSent: resourcesMapped,
             selectedTags: data.tags.map(tag => tag.id) || []
           });
         } catch (error) {
@@ -173,7 +178,8 @@ const CompanyForm = () => {
     try {
       setSubmitting(true);
       
-      const company = {
+      // Prepare data for submission
+      const preparedData = {
         name: formData.name,
         industry: formData.industry,
         location: formData.location,
@@ -184,18 +190,19 @@ const CompanyForm = () => {
         website: formData.website,
         socialMedia: formData.socialMedia,
         sector: formData.sector,
-        aiToolsDelivered: formData.aiToolsDelivered,
-        additionalSignUps: formData.additionalSignUps,
+        // Extract values from react-select objects
+        aiToolsDelivered: formData.aiToolsDelivered.map(item => item.value),
+        additionalSignUps: formData.additionalSignUps.map(item => item.value),
         valueToCollege: formData.valueToCollege ? parseFloat(formData.valueToCollege) : null,
         engagementNotes: formData.engagementNotes,
-        resourcesSent: formData.resourcesSent
+        resourcesSent: formData.resourcesSent.map(item => item.value)
       };
       
       let result;
       if (isEditing) {
-        result = await companiesApi.updateCompany(id, company, formData.selectedTags);
+        result = await companiesApi.updateCompany(id, preparedData, formData.selectedTags);
       } else {
-        result = await companiesApi.createCompany(company, formData.selectedTags);
+        result = await companiesApi.createCompany(preparedData, formData.selectedTags);
       }
       
       navigate(isEditing ? `/companies/${id}` : `/companies/${result.id}`);

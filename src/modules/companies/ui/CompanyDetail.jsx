@@ -17,6 +17,7 @@ import { LoadingSpinner } from '@/modules/core';
 import { EngagementList, EngagementForm } from '@/modules/engagements';
 import { ActivityList, ActivityForm } from '@/modules/activities';
 import { FileList, FileUpload } from '@/modules/files';
+import { api as companiesApi } from '../api';
 import * as Sentry from '@sentry/browser';
 
 const CompanyDetail = () => {
@@ -56,7 +57,10 @@ const CompanyDetail = () => {
         
         const data = await response.json();
         console.log("Company data received:", data);
-        setCompany(data);
+
+        // Parse multi-select fields from JSON strings
+        const parsedCompany = companiesApi.parseCompanyData(data);
+        setCompany(parsedCompany);
       } catch (error) {
         console.error("Error fetching company data:", error);
         setError(error.message);
@@ -124,7 +128,9 @@ const CompanyDetail = () => {
       }
       
       const data = await response.json();
-      setCompany(data);
+      // Parse multi-select fields from JSON strings
+      const parsedCompany = companiesApi.parseCompanyData(data);
+      setCompany(parsedCompany);
     } catch (error) {
       console.error("Error refreshing company data:", error);
       Sentry.captureException(error, {
@@ -137,75 +143,6 @@ const CompanyDetail = () => {
     } finally {
       setLoading(false);
     }
-  };
-  
-  // Parse multi-select values
-  const parseMultiSelectData = (company) => {
-    if (!company) return { aiTools: [], signUps: [], resources: [] };
-    
-    let aiTools = [];
-    let signUps = [];
-    let resources = [];
-    
-    try {
-      // First check if the data is already in JSON format
-      if (company.aiToolsDelivered) {
-        if (typeof company.aiToolsDelivered === 'string') {
-          // Check if it starts with '[' to determine if it's JSON
-          if (company.aiToolsDelivered.trim().startsWith('[')) {
-            aiTools = JSON.parse(company.aiToolsDelivered);
-          } else {
-            // Fall back to comma-separated parsing
-            aiTools = company.aiToolsDelivered.split(',').map(item => item.trim()).filter(Boolean);
-          }
-        } else if (Array.isArray(company.aiToolsDelivered)) {
-          aiTools = company.aiToolsDelivered;
-        }
-      }
-      
-      if (company.additionalSignUps) {
-        if (typeof company.additionalSignUps === 'string') {
-          if (company.additionalSignUps.trim().startsWith('[')) {
-            signUps = JSON.parse(company.additionalSignUps);
-          } else {
-            signUps = company.additionalSignUps.split(',').map(item => item.trim()).filter(Boolean);
-          }
-        } else if (Array.isArray(company.additionalSignUps)) {
-          signUps = company.additionalSignUps;
-        }
-      }
-      
-      if (company.resourcesSent) {
-        if (typeof company.resourcesSent === 'string') {
-          if (company.resourcesSent.trim().startsWith('[')) {
-            resources = JSON.parse(company.resourcesSent);
-          } else {
-            // For resources, we need objects with label property
-            resources = company.resourcesSent.split(',')
-              .map(item => ({ label: item.trim() }))
-              .filter(item => item.label);
-          }
-        } else if (Array.isArray(company.resourcesSent)) {
-          resources = company.resourcesSent;
-        }
-      }
-    } catch (error) {
-      console.error('Error parsing company data:', error);
-      Sentry.captureException(error, {
-        extra: {
-          component: 'CompanyDetail',
-          action: 'parseMultiSelectData',
-          companyId: id,
-          companyData: {
-            aiToolsDelivered: company.aiToolsDelivered,
-            additionalSignUps: company.additionalSignUps,
-            resourcesSent: company.resourcesSent
-          }
-        }
-      });
-    }
-    
-    return { aiTools, signUps, resources };
   };
   
   if (loading) {
@@ -233,7 +170,12 @@ const CompanyDetail = () => {
     return acc;
   }, {});
   
-  const { aiTools, signUps, resources } = parseMultiSelectData(company);
+  // Get the data we need for display - these are already parsed by parseCompanyData
+  const aiTools = company.aiToolsDelivered || [];
+  const signUps = company.additionalSignUps || [];
+  const resources = Array.isArray(company.resourcesSent) 
+    ? company.resourcesSent.map(r => typeof r === 'object' ? r : { label: r }) 
+    : [];
   
   return (
     <div>
@@ -583,7 +525,7 @@ const CompanyDetail = () => {
             
             {showEngagementForm ? (
               <EngagementForm
-                companyId={parseInt(id, 10)}
+                companyId={Number(id)}
                 onCancel={() => setShowEngagementForm(false)}
                 onSuccess={() => {
                   setShowEngagementForm(false);
@@ -615,7 +557,7 @@ const CompanyDetail = () => {
             
             {showActivityForm ? (
               <ActivityForm
-                companyId={parseInt(id, 10)}
+                companyId={Number(id)}
                 onCancel={() => setShowActivityForm(false)}
                 onSuccess={() => {
                   setShowActivityForm(false);
@@ -647,7 +589,7 @@ const CompanyDetail = () => {
             
             {showFileUpload ? (
               <FileUpload
-                companyId={parseInt(id, 10)}
+                companyId={Number(id)}
                 onCancel={() => setShowFileUpload(false)}
                 onSuccess={() => {
                   setShowFileUpload(false);

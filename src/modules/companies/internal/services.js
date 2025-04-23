@@ -47,15 +47,22 @@ export function parseCompanyData(company) {
   
   const parsedCompany = { ...company };
   
-  // Helper function to safely parse potential JSON strings
+  // Helper function to safely parse potential JSON strings or handle different formats
   const safeParseStringField = (field) => {
     if (!parsedCompany[field]) return [];
     
-    if (typeof parsedCompany[field] !== 'string') return parsedCompany[field];
+    // If it's already an array, return it as is
+    if (Array.isArray(parsedCompany[field])) return parsedCompany[field];
+    
+    // If it's not a string (but also not an array), return empty array
+    if (typeof parsedCompany[field] !== 'string') return [];
+    
+    // If it's the literal string "[object Object]", return empty array as this is invalid
+    if (parsedCompany[field] === "[object Object]") return [];
     
     try {
-      // Check if it looks like JSON
-      if (parsedCompany[field].trim().startsWith('[')) {
+      // Check if it looks like JSON (starts with [ or {)
+      if (parsedCompany[field].trim().startsWith('[') || parsedCompany[field].trim().startsWith('{')) {
         return JSON.parse(parsedCompany[field]);
       } else {
         // Fallback to comma-separated format
@@ -65,11 +72,12 @@ export function parseCompanyData(company) {
           .filter(Boolean);
       }
     } catch (error) {
-      console.error(`Error parsing ${field} field:`, error);
+      console.error(`Error parsing ${field} field:`, error, `Value: "${parsedCompany[field]}"`);
       Sentry.captureException(error, {
         extra: { field, value: parsedCompany[field], action: 'parseCompanyData' }
       });
-      return [];
+      // Fallback to comma-separated format even if JSON parsing fails
+      return parsedCompany[field].split(',').map(item => item.trim()).filter(Boolean);
     }
   };
   
@@ -109,9 +117,37 @@ export async function fetchCompanies() {
   }
 }
 
+/**
+ * Prepare company data for sending to API
+ * Ensures consistent handling of array fields by converting them to JSON strings
+ */
+export function prepareCompanyDataForAPI(companyData) {
+  const preparedData = { ...companyData };
+  
+  // Fields that might be arrays and need to be serialized
+  const arrayFields = ['resourcesSent', 'aiToolsDelivered', 'additionalSignUps'];
+  
+  // Convert arrays to JSON strings for storage
+  arrayFields.forEach(field => {
+    if (Array.isArray(preparedData[field])) {
+      preparedData[field] = JSON.stringify(preparedData[field]);
+    }
+    // Handle react-select format (array of objects with value/label)
+    else if (Array.isArray(preparedData[field]) && preparedData[field].length > 0 && preparedData[field][0]?.value) {
+      preparedData[field] = JSON.stringify(preparedData[field].map(item => item.value || item));
+    }
+  });
+  
+  return preparedData;
+}
+
 export async function createCompany(companyData, selectedTagIds) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
+    
+    // Ensure proper serialization of array data
+    const preparedData = prepareCompanyDataForAPI(companyData);
+    
     const response = await fetch('/api/companies', {
       method: 'POST',
       headers: {
@@ -119,7 +155,7 @@ export async function createCompany(companyData, selectedTagIds) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        company: companyData,
+        company: preparedData,
         tagIds: selectedTagIds,
       }),
     });
@@ -141,6 +177,10 @@ export async function createCompany(companyData, selectedTagIds) {
 export async function updateCompany(id, companyData, selectedTagIds) {
   try {
     const { data: { session } } = await supabase.auth.getSession();
+    
+    // Ensure proper serialization of array data
+    const preparedData = prepareCompanyDataForAPI(companyData);
+    
     const response = await fetch(`/api/companies/${id}`, {
       method: 'PUT',
       headers: {
@@ -149,7 +189,7 @@ export async function updateCompany(id, companyData, selectedTagIds) {
         'Accept': 'application/json'
       },
       body: JSON.stringify({
-        company: companyData,
+        company: preparedData,
         tagIds: selectedTagIds,
       }),
     });

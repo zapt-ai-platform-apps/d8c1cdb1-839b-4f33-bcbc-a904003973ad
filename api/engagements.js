@@ -27,32 +27,55 @@ export default async function handler(req, res) {
     else if (req.method === 'POST') {
       const { engagement, followUps = [] } = req.body;
       
-      const [newEngagement] = await db
-        .insert(engagements)
-        .values({
-          companyId: engagement.companyId,
-          dateOfContact: engagement.dateOfContact,
-          aiTrainingDelivered: engagement.aiTrainingDelivered,
-          notes: engagement.notes,
-          status: engagement.status,
-          updatedAt: new Date(),
-        })
-        .returning();
+      // Ensure companyId is a number
+      const companyId = Number(engagement.companyId);
       
-      // Insert follow-up actions if provided
-      if (followUps.length > 0) {
-        const followUpValues = followUps.map(followUp => ({
-          engagementId: newEngagement.id,
-          task: followUp.task,
-          dueDate: followUp.dueDate,
-          completed: followUp.completed || false,
-          updatedAt: new Date(),
-        }));
-        
-        await db.insert(followUpActions).values(followUpValues);
+      // Log the incoming data
+      console.log(`Creating engagement for company ID: ${companyId} (type: ${typeof companyId})`);
+      
+      // Validate companyId
+      if (isNaN(companyId)) {
+        return res.status(400).json({ 
+          error: `Invalid company ID: ${engagement.companyId} (${typeof engagement.companyId}). Must be a valid number.` 
+        });
       }
       
-      return res.status(201).json(newEngagement);
+      // Create engagement record
+      try {
+        const [newEngagement] = await db
+          .insert(engagements)
+          .values({
+            companyId: companyId,
+            dateOfContact: engagement.dateOfContact,
+            aiTrainingDelivered: engagement.aiTrainingDelivered,
+            notes: engagement.notes,
+            status: engagement.status,
+            updatedAt: new Date(),
+          })
+          .returning();
+        
+        // Insert follow-up actions if provided
+        if (followUps.length > 0) {
+          const followUpValues = followUps.map(followUp => ({
+            engagementId: newEngagement.id,
+            task: followUp.task,
+            dueDate: followUp.dueDate,
+            completed: followUp.completed || false,
+            updatedAt: new Date(),
+          }));
+          
+          await db.insert(followUpActions).values(followUpValues);
+        }
+        
+        console.log(`Successfully created engagement ${newEngagement.id} for company ${companyId}`);
+        return res.status(201).json(newEngagement);
+      } catch (dbError) {
+        console.error('Database error creating engagement:', dbError);
+        return res.status(500).json({ 
+          error: `Database error: ${dbError.message}`,
+          details: dbError.stack
+        });
+      }
     } 
     
     // Unsupported method

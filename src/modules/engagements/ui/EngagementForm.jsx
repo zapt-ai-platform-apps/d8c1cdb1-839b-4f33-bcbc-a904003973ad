@@ -138,8 +138,18 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
     try {
       setSubmitting(true);
       
+      // Ensure companyId is a number, not a string or BigInt
+      const parsedCompanyId = Number(companyId);
+      
+      // Log the companyId to help with debugging
+      console.log(`Submitting engagement with companyId: ${companyId} (type: ${typeof companyId}), parsed: ${parsedCompanyId} (type: ${typeof parsedCompanyId})`);
+      
+      if (isNaN(parsedCompanyId)) {
+        throw new Error(`Invalid company ID: ${companyId}. Must be a valid number.`);
+      }
+      
       const engagementData = {
-        companyId,
+        companyId: parsedCompanyId,
         dateOfContact: formData.dateOfContact,
         aiTrainingDelivered: formData.aiTrainingDelivered,
         notes: formData.notes,
@@ -168,7 +178,9 @@ const EngagementForm = ({ companyId, engagement = null, onCancel, onSuccess }) =
         extra: {
           component: 'EngagementForm',
           action: isEditing ? 'updateEngagement' : 'addEngagement',
-          formData
+          formData,
+          companyId,
+          parsedCompanyId: Number(companyId)
         }
       });
       setSubmitting(false);

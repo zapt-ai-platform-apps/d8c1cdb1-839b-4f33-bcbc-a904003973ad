@@ -25,10 +25,13 @@ export default async function handler(req, res) {
     // Handle potential BigInt IDs (for IDs like 1065784524843483100)
     let companyId;
     try {
-      companyId = BigInt(rawId);
-      // Convert back to number for DB operations if within safe integer range
-      if (companyId <= Number.MAX_SAFE_INTEGER) {
-        companyId = Number(companyId);
+      // First try to handle as a regular number
+      companyId = Number(rawId);
+      
+      // If it results in a non-safe integer or NaN, use BigInt as a fallback
+      if (!Number.isSafeInteger(companyId) || isNaN(companyId)) {
+        console.log('ID is not a safe integer, using BigInt:', rawId);
+        companyId = BigInt(rawId);
       }
     } catch (error) {
       console.error(`Invalid company ID format: ${rawId}`, error);
