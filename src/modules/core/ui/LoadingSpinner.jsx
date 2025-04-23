@@ -1,6 +1,6 @@
 import React from 'react';
 
-const LoadingSpinner = ({ size = 'medium', message = 'Loading...' }) => {
+export const LoadingSpinner = ({ size = 'medium', message = 'Loading...' }) => {
   const sizeClasses = {
     small: 'h-4 w-4 border-2',
     medium: 'h-8 w-8 border-4',
