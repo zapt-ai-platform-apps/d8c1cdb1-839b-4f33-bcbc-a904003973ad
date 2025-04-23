@@ -117,7 +117,7 @@ const ResourceForm = () => {
       setFileUploading(true);
       setUploadError(null);
       
-      console.log('Preparing to upload file:', file.name);
+      console.log('Preparing to upload file:', file.name, 'type:', file.type, 'size:', file.size);
       const formData = new FormData();
       formData.append('file', file);
       
@@ -181,9 +181,13 @@ const ResourceForm = () => {
       if (uploadOption === 'file' && file) {
         console.log('Uploading file before saving resource');
         const uploadedFile = await uploadFile();
+        
+        // Check if file upload failed and exit if so
         if (!uploadedFile) {
+          console.error('File upload failed or was canceled');
+          setError('File upload failed. Please check the error message and try again.');
           setSaving(false);
-          return; // Exit if file upload failed
+          return; // Exit early if file upload failed
         }
         
         // Use the file's URL for the resource link
