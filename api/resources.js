@@ -1,53 +1,74 @@
-import { resources, resourceDistributions, companies, tags } from '../drizzle/schema.js';
-import { getDB, handleApiError } from './_apiUtils.js';
-import { eq, inArray } from 'drizzle-orm';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { resources } from '../drizzle/schema.js';
+import { eq, desc } from 'drizzle-orm';
+import * as Sentry from '@sentry/node';
+
+// Initialize Sentry
+Sentry.init({
+  dsn: process.env.VITE_PUBLIC_SENTRY_DSN,
+  environment: process.env.VITE_PUBLIC_APP_ENV,
+  initialScope: {
+    tags: {
+      type: 'backend',
+      projectId: process.env.VITE_PUBLIC_APP_ID
+    }
+  }
+});
 
 export default async function handler(req, res) {
-  console.log(`[API] ${req.method} /api/resources`);
-  const db = getDB();
+  console.log(`API: ${req.method} request to /api/resources`);
+  
+  // Connect to the database
+  const client = postgres(process.env.COCKROACH_DB_URL);
+  const db = drizzle(client);
   
   try {
-    // GET - retrieve resources
+    // Handle different HTTP methods
     if (req.method === 'GET') {
-      const results = await db
-        .select()
-        .from(resources)
-        .orderBy(resources.createdAt);
-      
-      return res.status(200).json(results);
+      const result = await db.select().from(resources).orderBy(desc(resources.createdAt));
+      return res.status(200).json(result);
     } 
-    
-    // POST - create new resource
     else if (req.method === 'POST') {
-      const { resource } = req.body;
+      console.log('Creating new resource with data:', req.body);
       
-      if (!resource.title || !resource.type || !resource.link) {
-        return res.status(400).json({ error: 'Resource title, type, and link are required' });
+      // Create a new resource
+      const { title, type, description, link, fileName, fileType, fileSize } = req.body;
+      
+      // Validate required fields
+      if (!title || !type || !link) {
+        return res.status(400).json({ error: 'Missing required fields' });
       }
       
-      const [newResource] = await db
-        .insert(resources)
-        .values({
-          title: resource.title,
-          type: resource.type,
-          description: resource.description,
-          link: resource.link,
-          updatedAt: new Date(),
-        })
-        .returning();
+      // Insert the new resource
+      const result = await db.insert(resources).values({
+        title,
+        type,
+        description,
+        link,
+        fileName,
+        fileType,
+        fileSize: fileSize ? parseInt(fileSize, 10) : null
+      }).returning();
       
-      return res.status(201).json(newResource);
+      console.log('Resource created successfully:', result[0]);
+      
+      return res.status(201).json(result[0]);
     } 
-    
-    // Unsupported method
     else {
-      return res.status(405).json({ error: 'Method not allowed' });
+      return res.status(405).json({ error: 'Method Not Allowed' });
     }
   } catch (error) {
-    return handleApiError(error, res, {
-      method: req.method,
-      endpoint: '/api/resources',
-      body: req.body
+    console.error('Error handling resources request:', error);
+    Sentry.captureException(error, {
+      extra: {
+        route: '/api/resources',
+        method: req.method,
+        body: req.body
+      }
     });
+    return res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  } finally {
+    await client.end();
   }
 }

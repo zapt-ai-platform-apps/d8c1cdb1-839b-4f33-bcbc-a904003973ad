@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api as resourcesApi } from '../api';
 import { api as tagsApi } from '../../tags/api';
@@ -23,7 +23,9 @@ const ResourceForm = () => {
   const [file, setFile] = useState(null);
   const [fileUploading, setFileUploading] = useState(false);
   const [uploadFileName, setUploadFileName] = useState('');
+  const [uploadOption, setUploadOption] = useState('link'); // Default to link option
   
+  const fileInputRef = useRef(null);
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = !!id;
@@ -45,6 +47,15 @@ const ResourceForm = () => {
           setLoading(true);
           const data = await resourcesApi.getResourceById(parseInt(id, 10));
           setResource(data);
+          
+          // Determine if this resource has a file or link
+          if (data.fileName) {
+            setUploadOption('file');
+            setUploadFileName(data.fileName);
+          } else {
+            setUploadOption('link');
+          }
+          
           setLoading(false);
         } catch (error) {
           console.error('Error fetching resource:', error);
@@ -65,12 +76,37 @@ const ResourceForm = () => {
     setResource(prev => ({ ...prev, [name]: value }));
   };
   
+  const handleOptionChange = (option) => {
+    setUploadOption(option);
+    
+    // Clear file selection when switching to link option
+    if (option === 'link') {
+      setFile(null);
+      setUploadFileName('');
+    }
+    
+    // Focus the file input when switching to file option
+    if (option === 'file' && fileInputRef.current) {
+      setTimeout(() => {
+        fileInputRef.current.click();
+      }, 100);
+    }
+  };
+  
   const handleFileChange = (e) => {
     const selectedFile = e.target.files[0];
     if (selectedFile) {
+      console.log('File selected:', selectedFile.name);
       setFile(selectedFile);
       setUploadFileName(selectedFile.name);
       setUploadError(null);
+      setUploadOption('file');
+    }
+  };
+  
+  const handleUploadClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
     }
   };
   
@@ -81,6 +117,7 @@ const ResourceForm = () => {
       setFileUploading(true);
       setUploadError(null);
       
+      console.log('Preparing to upload file:', file.name);
       const formData = new FormData();
       formData.append('file', file);
       
@@ -96,6 +133,7 @@ const ResourceForm = () => {
       }
       
       const uploadedFile = await response.json();
+      console.log('File uploaded successfully:', uploadedFile);
       setFileUploading(false);
       
       return uploadedFile;
@@ -125,8 +163,9 @@ const ResourceForm = () => {
       
       let resourceData = { ...resource };
       
-      // If a file is selected, upload it first
-      if (file) {
+      // If file option is selected and we have a file
+      if (uploadOption === 'file' && file) {
+        console.log('Uploading file before saving resource');
         const uploadedFile = await uploadFile();
         if (!uploadedFile) {
           setSaving(false);
@@ -140,7 +179,14 @@ const ResourceForm = () => {
         resourceData.fileName = uploadedFile.name;
         resourceData.fileType = uploadedFile.type;
         resourceData.fileSize = file.size;
+      } else if (uploadOption === 'link') {
+        // Clear file metadata when using a link
+        resourceData.fileName = null;
+        resourceData.fileType = null;
+        resourceData.fileSize = null;
       }
+      
+      console.log('Saving resource with data:', resourceData);
       
       // Save or update the resource
       if (isEditing) {
@@ -235,36 +281,53 @@ const ResourceForm = () => {
               <h3 className="text-lg font-medium text-gray-900 mb-4">Resource File/Link</h3>
               
               <div className="space-y-4">
-                <div className="flex flex-col space-y-2">
-                  <label className="inline-flex items-center">
+                <div className="flex space-x-6 mb-4">
+                  <label className="inline-flex items-center cursor-pointer">
                     <input
                       type="radio"
                       name="uploadOption"
                       value="file"
-                      checked={file !== null}
-                      onChange={() => {}}
+                      checked={uploadOption === 'file'}
+                      onChange={() => handleOptionChange('file')}
                       className="form-radio"
                     />
                     <span className="ml-2">Upload File</span>
                   </label>
                   
-                  {(file || isEditing) && (
-                    <div className="ml-6 mt-2">
-                      <div className="relative">
-                        <input
-                          type="file"
-                          id="file"
-                          onChange={handleFileChange}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                        />
-                        <div className="flex items-center justify-between border border-gray-300 rounded-md px-3 py-2">
-                          <span className="text-sm truncate max-w-xs">
-                            {uploadFileName || 'Click to select file'}
-                          </span>
-                          <span className="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs">
-                            Browse
-                          </span>
-                        </div>
+                  <label className="inline-flex items-center cursor-pointer">
+                    <input
+                      type="radio"
+                      name="uploadOption"
+                      value="link"
+                      checked={uploadOption === 'link'}
+                      onChange={() => handleOptionChange('link')}
+                      className="form-radio"
+                    />
+                    <span className="ml-2">Add Link</span>
+                  </label>
+                </div>
+                
+                {uploadOption === 'file' && (
+                  <div className="ml-6 mt-2">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      id="file"
+                      onChange={handleFileChange}
+                      className="hidden"
+                    />
+                    
+                    <div className="flex flex-col space-y-2">
+                      <div 
+                        onClick={handleUploadClick}
+                        className="flex items-center justify-between border border-gray-300 rounded-md px-3 py-2 cursor-pointer hover:bg-gray-50"
+                      >
+                        <span className="text-sm truncate max-w-xs">
+                          {uploadFileName || 'Click to select file'}
+                        </span>
+                        <span className="bg-blue-50 text-blue-700 px-3 py-1 rounded text-xs font-medium">
+                          Browse
+                        </span>
                       </div>
                       
                       {uploadError && (
@@ -279,45 +342,30 @@ const ResourceForm = () => {
                           <span className="text-sm text-gray-500">Uploading...</span>
                         </div>
                       )}
+                      
+                      {file && !fileUploading && !uploadError && (
+                        <div className="text-green-600 text-sm mt-1">
+                          File selected: {file.name}
+                        </div>
+                      )}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
                 
-                <div className="flex flex-col space-y-2">
-                  <label className="inline-flex items-center">
+                {uploadOption === 'link' && (
+                  <div className="ml-6 mt-2">
                     <input
-                      type="radio"
-                      name="uploadOption"
-                      value="link"
-                      checked={file === null}
-                      onChange={() => {
-                        // If switching to link option, clear file selection
-                        if (file) {
-                          setFile(null);
-                          setUploadFileName('');
-                          setUploadError(null);
-                        }
-                      }}
-                      className="form-radio"
+                      type="url"
+                      id="link"
+                      name="link"
+                      value={resource.link || ''}
+                      onChange={handleChange}
+                      className="form-input box-border w-full"
+                      placeholder="https://..."
+                      required={uploadOption === 'link'}
                     />
-                    <span className="ml-2">Add Link</span>
-                  </label>
-                  
-                  {file === null && (
-                    <div className="ml-6 mt-2">
-                      <input
-                        type="url"
-                        id="link"
-                        name="link"
-                        value={resource.link || ''}
-                        onChange={handleChange}
-                        className="form-input box-border w-full"
-                        placeholder="https://..."
-                        required={file === null}
-                      />
-                    </div>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>

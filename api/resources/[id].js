@@ -1,78 +1,120 @@
-import { resources, resourceDistributions } from '../../drizzle/schema.js';
-import { getDB, handleApiError } from '../_apiUtils.js';
+import { drizzle } from 'drizzle-orm/postgres-js';
+import postgres from 'postgres';
+import { resources } from '../../drizzle/schema.js';
 import { eq } from 'drizzle-orm';
+import * as Sentry from '@sentry/node';
+
+// Initialize Sentry
+Sentry.init({
+  dsn: process.env.VITE_PUBLIC_SENTRY_DSN,
+  environment: process.env.VITE_PUBLIC_APP_ENV,
+  initialScope: {
+    tags: {
+      type: 'backend',
+      projectId: process.env.VITE_PUBLIC_APP_ID
+    }
+  }
+});
 
 export default async function handler(req, res) {
-  const { id } = req.query;
-  console.log(`[API] ${req.method} /api/resources/${id}`);
+  console.log(`API: ${req.method} request to /api/resources/${req.query.id}`);
   
-  if (!id || isNaN(Number(id))) {
+  // Get resource ID from URL
+  const resourceId = parseInt(req.query.id, 10);
+  
+  if (isNaN(resourceId)) {
     return res.status(400).json({ error: 'Invalid resource ID' });
   }
   
-  const resourceId = Number(id);
-  const db = getDB();
+  // Connect to the database
+  const client = postgres(process.env.COCKROACH_DB_URL);
+  const db = drizzle(client);
   
   try {
-    // GET - retrieve single resource with distribution data
+    // Handle different HTTP methods
     if (req.method === 'GET') {
-      const resource = await db.query.resources.findFirst({
-        where: eq(resources.id, resourceId)
-      });
+      const result = await db.select()
+        .from(resources)
+        .where(eq(resources.id, resourceId))
+        .limit(1);
       
-      if (!resource) {
+      if (result.length === 0) {
         return res.status(404).json({ error: 'Resource not found' });
       }
       
-      // Get distribution history
-      const distributions = await db
-        .select()
-        .from(resourceDistributions)
-        .where(eq(resourceDistributions.resourceId, resourceId));
-      
-      return res.status(200).json({
-        ...resource,
-        distributions
-      });
-    }
-    
-    // PUT - update resource
+      return res.status(200).json(result[0]);
+    } 
     else if (req.method === 'PUT') {
-      const { resource } = req.body;
+      console.log('Updating resource with data:', req.body);
       
-      const [updatedResource] = await db
-        .update(resources)
+      // Update the resource
+      const { title, type, description, link, fileName, fileType, fileSize } = req.body;
+      
+      // Validate required fields
+      if (!title || !type || !link) {
+        return res.status(400).json({ error: 'Missing required fields' });
+      }
+      
+      // Check if resource exists
+      const existingResource = await db.select({ id: resources.id })
+        .from(resources)
+        .where(eq(resources.id, resourceId))
+        .limit(1);
+      
+      if (existingResource.length === 0) {
+        return res.status(404).json({ error: 'Resource not found' });
+      }
+      
+      // Update the resource
+      const result = await db.update(resources)
         .set({
-          title: resource.title,
-          type: resource.type,
-          description: resource.description,
-          link: resource.link,
-          updatedAt: new Date(),
+          title,
+          type,
+          description,
+          link,
+          fileName,
+          fileType,
+          fileSize: fileSize ? parseInt(fileSize, 10) : null,
+          updatedAt: new Date()
         })
         .where(eq(resources.id, resourceId))
         .returning();
       
-      return res.status(200).json(updatedResource);
-    }
-    
-    // DELETE - delete resource
+      console.log('Resource updated successfully:', result[0]);
+      
+      return res.status(200).json(result[0]);
+    } 
     else if (req.method === 'DELETE') {
-      await db
-        .delete(resources)
-        .where(eq(resources.id, resourceId));
+      // Check if resource exists
+      const existingResource = await db.select({ id: resources.id })
+        .from(resources)
+        .where(eq(resources.id, resourceId))
+        .limit(1);
+      
+      if (existingResource.length === 0) {
+        return res.status(404).json({ error: 'Resource not found' });
+      }
+      
+      // Delete the resource
+      await db.delete(resources).where(eq(resources.id, resourceId));
       
       return res.status(204).send();
-    }
-    
-    // Unsupported method
+    } 
     else {
-      return res.status(405).json({ error: 'Method not allowed' });
+      return res.status(405).json({ error: 'Method Not Allowed' });
     }
   } catch (error) {
-    return handleApiError(error, res, {
-      method: req.method,
-      endpoint: `/api/resources/${id}`,
-      body: req.body
+    console.error('Error handling resource request:', error);
+    Sentry.captureException(error, {
+      extra: {
+        route: `/api/resources/${resourceId}`,
+        method: req.method,
+        resourceId,
+        body: req.body
+      }
     });
+    return res.status(500).json({ error: 'Internal Server Error', message: error.message });
+  } finally {
+    await client.end();
   }
 }
