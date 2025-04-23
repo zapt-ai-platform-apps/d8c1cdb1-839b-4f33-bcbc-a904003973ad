@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api as resourcesApi } from '../api';
 import { api as tagsApi } from '../../tags/api';
-import { PageHeader } from '../../core/ui/PageHeader';
-import { LoadingSpinner } from '../../core/ui/LoadingSpinner';
+import { PageHeader } from '../../core'; // Fixed import path
+import { LoadingSpinner } from '../../core';
 import Select from 'react-select';
 import { eventBus } from '../../core/events';
 import { events as resourceEvents } from '../events';
