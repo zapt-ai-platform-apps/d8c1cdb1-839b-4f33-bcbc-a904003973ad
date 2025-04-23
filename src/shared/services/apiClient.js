@@ -2,6 +2,45 @@ import { supabase } from './supabaseClient';
 import * as Sentry from '@sentry/browser';
 
 /**
+ * Attempts to get an active session, with retry logic
+ * @param {number} retryCount - Number of retries to attempt
+ * @returns {Promise<Object>} - The session object
+ */
+async function getActiveSession(retryCount = 1) {
+  let attempts = 0;
+  let lastError = null;
+
+  while (attempts < retryCount) {
+    try {
+      const { data, error } = await supabase.auth.getSession();
+      
+      if (error) {
+        throw error;
+      }
+      
+      if (data?.session) {
+        return data.session;
+      }
+      
+      // If we got here, there's no session but also no error
+      throw new Error('No active session found');
+    } catch (error) {
+      lastError = error;
+      attempts++;
+      
+      if (attempts < retryCount) {
+        // Wait 500ms before retrying
+        await new Promise(resolve => setTimeout(resolve, 500));
+        console.log(`Retrying session retrieval, attempt ${attempts+1}/${retryCount}`);
+      }
+    }
+  }
+  
+  // After all retries, throw the last error
+  throw new Error(`Authentication required: ${lastError?.message || 'No active session found. Please sign in again.'}`);
+}
+
+/**
  * Creates an authenticated fetch request with the proper headers
  * @param {string} url - The API endpoint to call
  * @param {Object} options - Request options (method, body, etc.)
@@ -9,13 +48,11 @@ import * as Sentry from '@sentry/browser';
  */
 export async function authenticatedFetch(url, options = {}) {
   try {
-    // Get the current session
-    const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+    const endpoint = url.split('/api/')[1] || url;
+    console.log(`API Request: ${options.method || 'GET'} ${endpoint}`);
     
-    if (sessionError || !session) {
-      console.error('Session error:', sessionError || 'No active session');
-      throw new Error('No active session found. Please sign in again.');
-    }
+    // Get the current session with retry
+    const session = await getActiveSession(2);
     
     // Set default headers with Authorization
     const headers = {
@@ -34,9 +71,11 @@ export async function authenticatedFetch(url, options = {}) {
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));
       const errorMessage = errorData.error || `Request failed with status ${response.status}`;
+      console.error(`API Response Error: ${response.status} for ${endpoint}`, errorData);
       throw new Error(errorMessage);
     }
     
+    console.log(`API Response Success: ${endpoint}`);
     return response;
   } catch (error) {
     // Log the error to Sentry

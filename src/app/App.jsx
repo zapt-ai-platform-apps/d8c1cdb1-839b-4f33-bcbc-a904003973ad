@@ -26,12 +26,17 @@ import { initializeActivities } from '@/modules/activities';
 import { initializeEngagements } from '@/modules/engagements';
 import { initializeFiles } from '@/modules/files';
 import { initializeTags } from '@/modules/tags';
+import { checkAndRecordLogin, refreshSession } from '@/shared/services/supabaseClient';
 
 const App = () => {
-  // Initialize all modules when app starts
+  // Initialize auth and all modules when app starts
   useEffect(() => {
-    const initializeModules = async () => {
+    const initializeApp = async () => {
       try {
+        console.log('Checking authentication...');
+        await checkAndRecordLogin();
+        await refreshSession();
+        
         console.log('Initializing application modules...');
         
         await Promise.all([
@@ -47,11 +52,11 @@ const App = () => {
         
         console.log('All modules initialized successfully');
       } catch (error) {
-        console.error('Error initializing modules:', error);
+        console.error('Error initializing application:', error);
       }
     };
     
-    initializeModules();
+    initializeApp();
   }, []);
   
   return (

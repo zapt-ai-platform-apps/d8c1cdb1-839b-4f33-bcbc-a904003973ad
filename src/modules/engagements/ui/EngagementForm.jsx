@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import DatePicker from 'react-datepicker';
 import "react-datepicker/dist/react-datepicker.css";
 import { api as engagementsApi } from '../api';
+import { checkAndRecordLogin, refreshSession } from '@/shared/services/supabaseClient';
 import * as Sentry from '@sentry/browser';
 
 const EngagementForm = ({ companyId, onEngagementCreated }) => {
@@ -17,6 +18,15 @@ const EngagementForm = ({ companyId, onEngagementCreated }) => {
   ]);
   
   const navigate = useNavigate();
+  
+  // Ensure authentication when component mounts
+  useEffect(() => {
+    const verifyAuth = async () => {
+      await checkAndRecordLogin();
+    };
+    
+    verifyAuth();
+  }, []);
   
   const handleFollowUpChange = (index, field, value) => {
     const updatedFollowUps = [...followUps];
@@ -70,6 +80,12 @@ const EngagementForm = ({ companyId, onEngagementCreated }) => {
     setIsSubmitting(true);
     
     try {
+      // Ensure we have an active session before submitting
+      await checkAndRecordLogin();
+      
+      // Try refreshing the session if needed
+      await refreshSession();
+      
       console.log('Submitting engagement with company ID:', companyId);
       const result = await engagementsApi.createEngagement(engagement, formattedFollowUps);
       
@@ -87,6 +103,15 @@ const EngagementForm = ({ companyId, onEngagementCreated }) => {
       ]);
     } catch (error) {
       console.error('Failed to create engagement:', error);
+      
+      // Handle authentication errors specifically
+      if (error.message.includes('Authentication required') || 
+          error.message.includes('No active session')) {
+        setError('Your session has expired. Please refresh the page and try again.');
+      } else {
+        setError(error.message || 'Failed to create engagement. Please try again.');
+      }
+      
       Sentry.captureException(error, {
         extra: {
           engagement,
@@ -94,7 +119,6 @@ const EngagementForm = ({ companyId, onEngagementCreated }) => {
           location: 'EngagementForm.handleSubmit'
         }
       });
-      setError(error.message || 'Failed to create engagement. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

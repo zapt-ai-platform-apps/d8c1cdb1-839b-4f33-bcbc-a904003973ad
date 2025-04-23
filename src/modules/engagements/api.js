@@ -1,5 +1,7 @@
 import { apiClient } from '@/shared/services/apiClient';
 import { validateEngagement, validateFollowUpAction } from './validators';
+import * as Sentry from '@sentry/browser';
+import { refreshSession } from '@/shared/services/supabaseClient';
 
 export const api = {
   /**
@@ -12,7 +14,17 @@ export const api = {
       throw new Error('Company ID is required');
     }
     
-    return apiClient.get('engagements', { companyId });
+    try {
+      // Try refreshing the session before making the request
+      await refreshSession();
+      return await apiClient.get('engagements', { companyId });
+    } catch (error) {
+      console.error('Failed to get engagements:', error);
+      Sentry.captureException(error, {
+        extra: { companyId, context: 'getEngagements' }
+      });
+      throw error;
+    }
   },
   
   /**
@@ -22,32 +34,47 @@ export const api = {
    * @returns {Promise<Object>} - The created engagement
    */
   async createEngagement(engagement, followUps = []) {
-    // Validate engagement data before sending
-    const validatedEngagement = validateEngagement(engagement, {
-      actionName: 'createEngagement',
-      location: 'engagements/api.js',
-      direction: 'outgoing',
-      moduleFrom: 'engagements',
-      moduleTo: 'server'
-    });
-    
-    // Validate each follow-up action if provided
-    const validatedFollowUps = followUps.map(followUp => 
-      validateFollowUpAction(followUp, {
+    try {
+      // Try refreshing the session before making the request
+      await refreshSession();
+      
+      // Validate engagement data before sending
+      const validatedEngagement = validateEngagement(engagement, {
         actionName: 'createEngagement',
         location: 'engagements/api.js',
         direction: 'outgoing',
         moduleFrom: 'engagements',
         moduleTo: 'server'
-      })
-    );
-    
-    console.log('Creating engagement with company ID:', validatedEngagement.companyId);
-    
-    return apiClient.post('engagements', {
-      engagement: validatedEngagement,
-      followUps: validatedFollowUps
-    });
+      });
+      
+      // Validate each follow-up action if provided
+      const validatedFollowUps = followUps.map(followUp => 
+        validateFollowUpAction(followUp, {
+          actionName: 'createEngagement',
+          location: 'engagements/api.js',
+          direction: 'outgoing',
+          moduleFrom: 'engagements',
+          moduleTo: 'server'
+        })
+      );
+      
+      console.log('Creating engagement with company ID:', validatedEngagement.companyId);
+      
+      return await apiClient.post('engagements', {
+        engagement: validatedEngagement,
+        followUps: validatedFollowUps
+      });
+    } catch (error) {
+      console.error('Failed to create engagement:', error);
+      Sentry.captureException(error, {
+        extra: { 
+          engagement, 
+          followUps,
+          context: 'createEngagement' 
+        }
+      });
+      throw error;
+    }
   },
   
   /**
@@ -56,7 +83,17 @@ export const api = {
    * @returns {Promise<Object>} - The engagement data
    */
   async getEngagement(id) {
-    return apiClient.get(`engagements/${id}`);
+    try {
+      // Try refreshing the session before making the request
+      await refreshSession();
+      return await apiClient.get(`engagements/${id}`);
+    } catch (error) {
+      console.error(`Failed to get engagement ${id}:`, error);
+      Sentry.captureException(error, {
+        extra: { id, context: 'getEngagement' }
+      });
+      throw error;
+    }
   },
   
   /**
@@ -66,14 +103,25 @@ export const api = {
    * @returns {Promise<Object>} - The updated engagement
    */
   async updateEngagement(id, engagement) {
-    const validatedEngagement = validateEngagement(engagement, {
-      actionName: 'updateEngagement',
-      location: 'engagements/api.js',
-      direction: 'outgoing',
-      moduleFrom: 'engagements',
-      moduleTo: 'server'
-    });
-    
-    return apiClient.put(`engagements/${id}`, validatedEngagement);
+    try {
+      // Try refreshing the session before making the request
+      await refreshSession();
+      
+      const validatedEngagement = validateEngagement(engagement, {
+        actionName: 'updateEngagement',
+        location: 'engagements/api.js',
+        direction: 'outgoing',
+        moduleFrom: 'engagements',
+        moduleTo: 'server'
+      });
+      
+      return await apiClient.put(`engagements/${id}`, validatedEngagement);
+    } catch (error) {
+      console.error(`Failed to update engagement ${id}:`, error);
+      Sentry.captureException(error, {
+        extra: { id, engagement, context: 'updateEngagement' }
+      });
+      throw error;
+    }
   }
 };
