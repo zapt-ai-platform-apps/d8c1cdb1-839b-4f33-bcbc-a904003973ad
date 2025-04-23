@@ -1,5 +1,5 @@
 import { resourceDistributions, companyTags, tags } from '../../drizzle/schema.js';
-import { getDB, handleApiError } from '../_apiUtils.js';
+import { getDB, handleApiError, safeStringId } from '../_apiUtils.js';
 import { eq, inArray } from 'drizzle-orm';
 
 export default async function handler(req, res) {
@@ -22,8 +22,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'Either company IDs or tag IDs must be provided' });
     }
     
-    // Convert IDs to strings to preserve precision
+    // CRITICAL: Convert all IDs to strings to preserve precision
+    // This is the fix for the precision loss error
     const resourceIdStr = String(resourceId);
+    console.log(`Resource ID for distribution (as string): ${resourceIdStr}`);
     
     // Prepare distribution records
     const distributions = [];
@@ -76,6 +78,10 @@ export default async function handler(req, res) {
     }
     
     console.log(`Inserting ${distributions.length} resource distributions`);
+    if (distributions.length > 0) {
+      // Log a sample distribution record for debugging
+      console.log('Sample distribution record:', distributions[0]);
+    }
     
     // Insert all distribution records
     const results = await db

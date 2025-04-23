@@ -53,8 +53,9 @@ export const fetchResourceById = async (id) => {
   try {
     console.log(`Fetching resource data for ID: ${id}`);
     
-    // Use the ID as-is without parsing to preserve precision
-    const response = await fetch(`/api/resources/${id}`);
+    // Always use ID as string to preserve precision
+    const resourceIdStr = String(id);
+    const response = await fetch(`/api/resources/${resourceIdStr}`);
     
     if (!response.ok) {
       const errorText = await response.text();
@@ -163,6 +164,9 @@ export const createResource = async (resourceData) => {
  */
 export const updateResource = async (id, resourceData) => {
   try {
+    // Always use ID as string to preserve precision
+    const resourceIdStr = String(id);
+    
     // Process URL if needed - only if it's not an uploaded file URL
     let url = resourceData.link;
     if (url && !url.startsWith('http://') && !url.startsWith('https://')) {
@@ -184,7 +188,7 @@ export const updateResource = async (id, resourceData) => {
     });
     
     // Send the data directly without nesting it under 'resource'
-    const response = await fetch(`/api/resources/${id}`, {
+    const response = await fetch(`/api/resources/${resourceIdStr}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json'
@@ -231,7 +235,8 @@ export const updateResource = async (id, resourceData) => {
  */
 export const distributeResource = async (resourceId, companyIds = [], tagIds = []) => {
   try {
-    // Ensure all IDs are strings to preserve precision
+    // CRITICAL: Always ensure ALL IDs are treated as strings to preserve precision
+    // This is the fix for the precision loss error
     const resourceIdStr = String(resourceId);
     const companyIdsStr = companyIds.map(id => String(id));
     const tagIdsStr = tagIds.map(id => String(id));

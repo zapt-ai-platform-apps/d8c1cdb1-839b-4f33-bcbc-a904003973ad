@@ -99,7 +99,10 @@ export function handleApiError(error, res, context = {}) {
   });
 }
 
-// Helper to safely convert IDs to strings to preserve precision
+/**
+ * Helper to safely convert IDs to strings to preserve precision
+ * This prevents JavaScript Number precision issues with large IDs
+ */
 export function safeStringId(id) {
   return id === null || id === undefined ? id : String(id);
 }
